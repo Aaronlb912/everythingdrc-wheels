@@ -11,6 +11,8 @@ const CHANNELS = {
   gym: null,
 };
 
+const GUILD = "1533847576619520082";
+
 // Week starts Monday 00:00 US Eastern.
 function weekStart(now = new Date()) {
   const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
@@ -20,9 +22,13 @@ function weekStart(now = new Date()) {
   return new Date(Math.round((et.getTime() + offset) / 60000) * 60000);
 }
 
-async function api(path) {
+async function api(path, method = "GET", body) {
   for (let i = 0; i < 5; i++) {
-    const r = await fetch("https://discord.com/api/v10" + path, { headers: { Authorization: "Bot " + TOKEN } });
+    const r = await fetch("https://discord.com/api/v10" + path, {
+      method,
+      headers: { Authorization: "Bot " + TOKEN, ...(body && { "Content-Type": "application/json" }) },
+      body: body && JSON.stringify(body),
+    });
     if (r.status === 429) { const wait = ((await r.json()).retry_after || 1) * 1000; await new Promise(s => setTimeout(s, wait)); continue; }
     if (!r.ok) throw new Error(path + " -> " + r.status + " " + (await r.text()));
     return r.json();
@@ -44,13 +50,15 @@ async function channelEntries(id, since) {
     if (!msgs.length) break;
     for (const m of msgs) {
       if (new Date(m.timestamp) < since) return out;
+      // Pinned posts are the how-to and the weekly list, not suggestions.
+      if (m.pinned) continue;
       const name = entryName(m);
       if (!name) continue;
       const up = m.reactions?.find(r => r.emoji.name === "👍")?.count || 0;
       // Bot posts without a 👍 are setup or system messages, not suggestions.
       if (m.author.bot && !up) continue;
       // Bots that auto-react (Carl-bot) add one 👍 of their own.
-      out.push([name, Math.max(0, m.author.bot ? up - 1 : up)]);
+      out.push([name, Math.max(0, m.author.bot ? up - 1 : up), `https://discord.com/channels/${GUILD}/${id}/${m.id}`]);
     }
     before = "&before=" + msgs[msgs.length - 1].id;
   }
@@ -62,19 +70,50 @@ const lists = {};
 for (const [cat, id] of Object.entries(CHANNELS)) {
   if (!id) continue;
   const merged = new Map();
-  for (const [name, v] of await channelEntries(id, since)) {
+  for (const [name, v, link] of await channelEntries(id, since)) {
     const k = name.toLowerCase();
     const cur = merged.get(k);
-    merged.set(k, cur ? [cur[0], cur[1] + v] : [name, v]);
+    // Repeats add their votes to the first post, which keeps the link.
+    merged.set(k, cur ? [cur[0], cur[1] + v, cur[2]] : [name, v, link]);
   }
   lists[cat] = [...merged.values()].sort((a, b) => b[1] - a[1]).slice(0, 40);
 }
 
 const fs = await import("node:fs");
-const next = { weekStart: since.toISOString(), lists };
 let prev = {};
 try { prev = JSON.parse(fs.readFileSync("data.json", "utf8")); } catch {}
-if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists }) === JSON.stringify(next)) {
+
+// One bot message per channel lists this week's suggestions with jump links.
+// It is edited in place; pin it once in Discord so people find it.
+function boardText(cat) {
+  const it = lists[cat];
+  const head = "📋 **This week's suggestions** (updates every 15 minutes, resets Monday)\nTap a name to jump to it and react 👍. Already on the list? Vote on it instead of posting it again.\n\n";
+  if (!it.length) return head + "Nothing yet this week. Post the first one!";
+  let body = "";
+  for (const [i, [name, v, link]] of it.entries()) {
+    const line = `${i + 1}. [${name.replace(/[[\]]/g, "")}](${link}) · ${v} 👍\n`;
+    if ((head + body + line).length > 1900) { body += `...and ${it.length - i} more on the wheel page.`; break; }
+    body += line;
+  }
+  return head + body.trim();
+}
+const boards = { ...(prev.boards || {}) };
+for (const [cat, id] of Object.entries(CHANNELS)) {
+  if (!id) continue;
+  const content = boardText(cat), old = boards[cat];
+  if (old && old.text === content) continue;
+  try {
+    let msg = null;
+    if (old?.id) msg = await api(`/channels/${id}/messages/${old.id}`, "PATCH", { content, flags: 4 }).catch(() => null);
+    if (!msg) msg = await api(`/channels/${id}/messages`, "POST", { content, flags: 4 });
+    boards[cat] = { id: msg.id, text: content };
+  } catch (e) {
+    console.warn("::warning::Couldn't post the list in " + cat + ": " + e.message);
+  }
+}
+
+const next = { weekStart: since.toISOString(), lists, boards };
+if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards }) === JSON.stringify(next)) {
   console.log("no change");
 } else {
   fs.writeFileSync("data.json", JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1) + "\n");
