@@ -142,8 +142,28 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
   }
   await keep(cat + "_card", id, cardEmbed(cat));
 }
-const next = { weekStart: since.toISOString(), lists, boards };
-if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards }) === JSON.stringify(next)) {
+// One post per channel when the week flips, and a last call on Saturday (ET).
+const posted = { ...(prev.posted || {}) }, wk = since.toISOString();
+const etDay = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" })).getDay();
+async function say(channel, embed) {
+  await api("/channels/" + channel + "/messages", "POST", { embeds: [{ color: COLOR, ...embed }] })
+    .catch(e => console.warn("::warning::Couldn't post nudge: " + e.message));
+}
+if (prev.weekStart && prev.weekStart !== wk && posted.reset !== wk) {
+  for (const [cat, id] of Object.entries(CHANNELS)) if (id)
+    await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
+  posted.reset = wk;
+}
+if (etDay === 6 && posted.lastCall !== wk) {
+  for (const [cat, id] of Object.entries(CHANNELS)) {
+    if (!id) continue;
+    const top = lists[cat].slice(0, 3).map(([n, v, link], i) => ["🥇", "🥈", "🥉"][i] + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
+    await say(id, { title: "⏰ Last call for " + LABELS[cat].noun + " votes", description: (top || "Nothing suggested yet. There's still time!") + "\n\nThe wheel spins soon. React 👍 on your favorite." });
+  }
+  posted.lastCall = wk;
+}
+const next = { weekStart: since.toISOString(), lists, boards, posted };
+if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {} }) === JSON.stringify(next)) {
   console.log("no change");
 } else {
   fs.writeFileSync("data.json", JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1) + "\n");
