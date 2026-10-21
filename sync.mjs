@@ -7,9 +7,9 @@ if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1);
 const CHANNELS = {
   food: "1562541058288779357",
   games: "1562529876739760138",
-  music: "1562529917546274817",
-  gym: null,
 };
+// Plain suggestion channels: the card becomes a short how-to, no wheel or votes.
+const PLAIN = { music: "1562529917546274817" };
 
 const GUILD = "1533847576619520082";
 
@@ -182,6 +182,13 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
     delete boards[k];
   }
   await keep(cat + "_card", id, cardEmbed(cat));
+}
+for (const [cat, id] of Object.entries(PLAIN)) {
+  await keep(cat + "_card", id, {
+    color: COLOR,
+    title: LABELS[cat].emoji + " " + LABELS[cat].title + " suggestions",
+    description: "Got a " + LABELS[cat].noun + " Dennis should check out? Post it here, one per message. React to the ones you like.",
+  });
 }
 // One post per channel when the week flips, and a last call on Saturday (ET).
 const posted = { ...(prev.posted || {}) }, wk = since.toISOString();

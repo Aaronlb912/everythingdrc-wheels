@@ -80,9 +80,9 @@ li .x{padding:4px 9px}
 <script>
 const $=id=>document.getElementById(id);
 const COLORS=["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
-const CATS={food:{label:"Food",title:"Food Review Wednesday",emoji:"🍕"},games:{label:"Games",title:"Game of the week",emoji:"🎮"},music:{label:"Music",title:"Song of the week",emoji:"🎵"},gym:{label:"Gym",title:"Gym challenge",emoji:"🏋️"}};
-const EXAMPLE={food:[["Pho",12],["Birria tacos",8],["Wings",3],["Sushi",5]],games:[],music:[],gym:[]};
-let state=load(),cat=CATS[location.hash.slice(1)]?location.hash.slice(1):(state.cat||"food"),rot=0,spinning=false,lastWin=null;
+const CATS={food:{label:"Food",title:"Food Review Wednesday",emoji:"🍕"},games:{label:"Games",title:"Game of the week",emoji:"🎮"}};
+const EXAMPLE={food:[["Pho",12],["Birria tacos",8],["Wings",3],["Sushi",5]],games:[]};
+let state=load(),cat=CATS[location.hash.slice(1)]?location.hash.slice(1):(CATS[state.cat]?state.cat:"food"),rot=0,spinning=false,lastWin=null;
 
 function load(){try{const s=JSON.parse(localStorage.getItem("drc-wheels"));if(s&&s.lists)return s}catch(e){}return{lists:JSON.parse(JSON.stringify(EXAMPLE))}}
 function save(){state.cat=cat;try{localStorage.setItem("drc-wheels",JSON.stringify(state))}catch(e){}}
