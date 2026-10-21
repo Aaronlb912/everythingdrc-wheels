@@ -1,9 +1,31 @@
 {
  "weekStart": "2026-10-19T04:00:00.000Z",
  "lists": {
-  "food": [],
-  "games": [],
+  "food": [
+   [
+    "Arbys",
+    0,
+    "https://discord.com/channels/1533847576619520082/1562541058288779357/1562575914435354766"
+   ]
+  ],
+  "games": [
+   [
+    "Vampire Crawlers",
+    0,
+    "https://discord.com/channels/1533847576619520082/1562529876739760138/1562575421617471609"
+   ],
+   [
+    "Bye Sweet Carol",
+    0,
+    "https://discord.com/channels/1533847576619520082/1562529876739760138/1562575213206704151"
+   ],
+   [
+    "https://youtu.be/cXr1KBLJoWM?is=t0EZVe57",
+    0,
+    "https://discord.com/channels/1533847576619520082/1562529876739760138/1562572539941880068"
+   ]
+  ],
   "music": []
  },
- "updated": "2026-10-21T20:48:54.777Z"
+ "updated": "2026-10-21T21:19:58.264Z"
 }
