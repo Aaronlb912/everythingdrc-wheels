@@ -1,5 +1,5 @@
 // Reads this week's suggestions from Discord and writes data.json for the wheel.
-// A suggestion is one message; its votes are the 👍 reactions on it.
+// A suggestion is one message; its votes are the people who reacted to it, with any emoji.
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1); }
 
@@ -42,6 +42,8 @@ function entryName(m) {
   return raw.split("\n")[0].replace(/<a?:\w+:\d+>|[*_~`>]/g, "").trim().slice(0, 40);
 }
 
+const me = await api("/users/@me");
+
 async function channelEntries(id, since) {
   const out = [];
   let before = "";
@@ -54,11 +56,17 @@ async function channelEntries(id, since) {
       if (m.pinned) continue;
       const name = entryName(m);
       if (!name) continue;
-      const up = m.reactions?.find(r => r.emoji.name === "👍")?.count || 0;
-      // Bot posts without a 👍 are setup or system messages, not suggestions.
-      if (m.author.bot && !up) continue;
-      // Bots that auto-react (Carl-bot) add one 👍 of their own.
-      out.push([name, Math.max(0, m.author.bot ? up - 1 : up), `https://discord.com/channels/${GUILD}/${id}/${m.id}`]);
+      // Our own posts are nudges. Other bot posts without reactions are setup or
+      // system messages; Carl-bot suggestions always carry its own reaction.
+      if (m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
+      // Each person counts once however many emojis they add. Bots don't count.
+      const voters = new Set();
+      for (const r of m.reactions || []) {
+        const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
+        const users = await api(`/channels/${id}/messages/${m.id}/reactions/${e}?limit=100`).catch(() => []);
+        for (const u of users) if (!u.bot) voters.add(u.id);
+      }
+      out.push([name, voters.size, `https://discord.com/channels/${GUILD}/${id}/${m.id}`]);
     }
     before = "&before=" + msgs[msgs.length - 1].id;
   }
@@ -128,9 +136,9 @@ function cardEmbed(cat) {
     color: COLOR,
     title: l.emoji + " " + l.title + " wheel",
     description: [
-      "👍 **Vote:** tap a name below and react 👍",
+      "👍 **Vote:** tap a name below and react with any emoji",
       "✍️ **Suggest:** type a " + l.noun + " in this channel, one per message",
-      "🎡 **Win:** most 👍 gets the biggest slice. Dennis spins at the end of the week.",
+      "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
       ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
       "**This week**",
@@ -183,7 +191,7 @@ if (etDay === 6 && posted.lastCall !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
     const top = lists[cat].slice(0, 3).map(([n, v, link], i) => ["🥇", "🥈", "🥉"][i] + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
-    await say(id, { title: "⏰ Last call for " + LABELS[cat].noun + " votes", description: (top || "Nothing suggested yet. There's still time!") + "\n\nThe wheel spins soon. React 👍 on your favorite." });
+    await say(id, { title: "⏰ Last call for " + LABELS[cat].noun + " votes", description: (top || "Nothing suggested yet. There's still time!") + "\n\nThe wheel spins soon. React to your favorite with any emoji." });
   }
   posted.lastCall = wk;
 }
