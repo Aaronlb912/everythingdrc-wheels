@@ -85,7 +85,6 @@ try { prev = JSON.parse(fs.readFileSync("data.json", "utf8")); } catch {}
 
 // The bot keeps one card per channel, edited in place: short how-to on top,
 // this week's list with jump links below. Pin it once in Discord.
-const WHEEL = "https://aaronlb912.github.io/everythingdrc-wheels/";
 const COLOR = 0xe2552e;
 const LABELS = {
   food: { title: "Food", noun: "food", emoji: "🍕" },
@@ -99,13 +98,12 @@ function cardEmbed(cat) {
   let body = "";
   for (const [i, [name, v, link]] of it.entries()) {
     const line = (i + 1) + ". [" + name.replace(/[[\]]/g, "") + "](" + link + ") · **" + v + "** 👍\n";
-    if ((body + line).length > 3400) { body += "...and " + (it.length - i) + " more on the wheel page."; break; }
+    if ((body + line).length > 3400) { body += "...and " + (it.length - i) + " more."; break; }
     body += line;
   }
   return {
     color: COLOR,
     title: l.emoji + " " + l.title + " wheel",
-    url: WHEEL + "#" + cat,
     description: [
       "👍 **Vote:** tap a name below and react 👍",
       "✍️ **Suggest:** type a " + l.noun + " in this channel, one per message",
