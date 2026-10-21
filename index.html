@@ -1,0 +1,155 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">
+<title>Everythingdrc Wheels</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: wheel on the left, entry list on the right; stacks on phones */
+:root{
+  --bg:#f7f3ee;--panel:#fffdfa;--ink:#2a1f17;--muted:#7a6a5c;--line:#e6dccf;
+  --accent:#d2461f;--accent-ink:#fff;--good:#2f7a4a;
+  --s1:#e2572c;--s2:#e89a10;--s3:#3c8d5a;--s4:#2f6fb0;--s5:#9b4bb0;--s6:#c23a5e;--s7:#1f9c9c;--s8:#8a6a2c;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",ui-sans-serif,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1410;--panel:#241c16;--ink:#f3e9df;--muted:#b3a291;--line:#3a2e25;--accent:#ff6a3d;--accent-ink:#1a1410;--good:#5fc485;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1a1410;--panel:#241c16;--ink:#f3e9df;--muted:#b3a291;--line:#3a2e25;--accent:#ff6a3d;--accent-ink:#1a1410;--good:#5fc485;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,5vw,42px);line-height:1.05;margin:0;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--muted)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.wheelbox{position:relative;max-width:480px;margin:0 auto}
+canvas{width:100%;aspect-ratio:1;max-width:100%;display:block;cursor:pointer}
+.pointer{position:absolute;left:50%;top:-6px;transform:translateX(-50%);border-left:14px solid transparent;border-right:14px solid transparent;border-top:24px solid var(--ink)}
+.result{margin-top:12px;text-align:center;font-family:var(--display);font-size:24px;font-weight:800;min-height:1.4em;overflow-wrap:anywhere}
+.result small{display:block;font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:inherit;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.spin{font-size:17px;padding:12px 28px}
+h2{font-family:var(--display);font-size:20px;margin:0 0 6px}
+.hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+textarea{width:100%;box-sizing:border-box;min-height:90px;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
+input{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
+ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+li{display:grid;grid-template-columns:14px minmax(0,1fr) 64px auto;gap:8px;align-items:center}
+li .nm{width:100%}
+li .vt{width:100%;font-variant-numeric:tabular-nums;text-align:right}
+li .x{padding:4px 9px}
+.dot{width:14px;height:14px;border-radius:50%}
+.pct{grid-column:2/-1;font-size:12px;color:var(--muted);margin-top:-6px;font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);padding:8px 0}
+.msg{font-size:13px;color:var(--muted);min-height:1.2em;margin-top:6px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Everythingdrc Wheels</h1>
+    <p>Copy the suggestions and 👍 counts from Discord, then spin. More votes means a bigger slice. One vote-free slice still gets a small chance.</p>
+    <div class="tabs" role="tablist" id="tabs"></div>
+  </header>
+  <div class="grid">
+    <section class="panel">
+      <div class="wheelbox"><div class="pointer" aria-hidden="true"></div><canvas id="wheel" width="960" height="960" aria-label="Weighted wheel. Click to spin."></canvas></div>
+      <div class="result" id="result" aria-live="polite"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="primary spin" id="spinBtn">Spin</button>
+        <button id="copyBtn" hidden>Copy result for Discord</button>
+      </div>
+      <div class="msg" id="copyMsg" style="text-align:center"></div>
+    </section>
+    <section class="panel">
+      <h2 id="listTitle">Entries</h2>
+      <p class="hint">Paste one per line with the vote count at the end, like <b>Birria tacos 12</b>.</p>
+      <textarea id="paste" placeholder="Pho 12&#10;Birria tacos 8&#10;Wings 3"></textarea>
+      <div class="bar"><button class="primary" id="addBtn">Add to wheel</button><button id="clearBtn">Clear wheel</button></div>
+      <div class="msg" id="msg"></div>
+      <ul id="list"></ul>
+    </section>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const COLORS=["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+const CATS={food:{label:"Food",title:"Food Review Wednesday",emoji:"🍕"},games:{label:"Games",title:"Game of the week",emoji:"🎮"},music:{label:"Music",title:"Song of the week",emoji:"🎵"},gym:{label:"Gym",title:"Gym challenge",emoji:"🏋️"}};
+const EXAMPLE={food:[["Pho",12],["Birria tacos",8],["Wings",3],["Sushi",5]],games:[],music:[],gym:[]};
+let state=load(),cat=CATS[location.hash.slice(1)]?location.hash.slice(1):(state.cat||"food"),rot=0,spinning=false,lastWin=null;
+
+function load(){try{const s=JSON.parse(localStorage.getItem("drc-wheels"));if(s&&s.lists)return s}catch(e){}return{lists:JSON.parse(JSON.stringify(EXAMPLE))}}
+function save(){state.cat=cat;try{localStorage.setItem("drc-wheels",JSON.stringify(state))}catch(e){}}
+const items=()=>state.lists[cat]||(state.lists[cat]=[]);
+const weight=v=>1+Math.max(0,v|0);
+const css=v=>getComputedStyle(document.body).getPropertyValue(v);
+
+function tabs(){const t=$("tabs");t.innerHTML="";Object.entries(CATS).forEach(([k,c])=>{const b=document.createElement("button");b.type="button";b.setAttribute("role","tab");b.textContent=c.emoji+" "+c.label;b.setAttribute("aria-selected",k===cat);
+  b.onclick=()=>{if(spinning||k===cat)return;cat=k;lastWin=null;rot=0;try{history.replaceState(null,"","#"+k)}catch(e){}save();render()};t.append(b)})}
+
+function draw(){
+  const c=$("wheel"),g=c.getContext("2d"),S=c.width,R=S/2-10,it=items(),tot=it.reduce((a,[,v])=>a+weight(v),0);
+  g.clearRect(0,0,S,S);g.save();g.translate(S/2,S/2);
+  if(!it.length){g.fillStyle=css("--line");g.beginPath();g.arc(0,0,R,0,7);g.fill();g.fillStyle=css("--muted");g.font="700 36px "+css("--body");g.textAlign="center";g.fillText("Paste entries to fill the wheel",0,12);g.restore();return}
+  g.rotate(rot);let a=-Math.PI/2;
+  it.forEach(([name,v],i)=>{const span=weight(v)/tot*Math.PI*2;g.fillStyle=COLORS[i%COLORS.length];g.beginPath();g.moveTo(0,0);g.arc(0,0,R,a,a+span);g.closePath();g.fill();
+    g.strokeStyle="rgba(255,255,255,.75)";g.lineWidth=3;g.stroke();
+    if(span>0.1){g.save();g.rotate(a+span/2);g.fillStyle="#fff";g.font="700 "+(span>0.45?36:26)+"px "+css("--body");g.textAlign="right";g.textBaseline="middle";
+      let t=name;while(g.measureText(t).width>R-80&&t.length>3)t=t.slice(0,-2);if(t!==name)t+="…";g.fillText(t,R-26,0);g.restore()}
+    a+=span});
+  g.restore();g.fillStyle=css("--panel");g.beginPath();g.arc(S/2,S/2,44,0,7);g.fill();
+}
+
+function render(){
+  tabs();$("listTitle").textContent=CATS[cat].emoji+" "+CATS[cat].label+" entries";
+  const it=items(),tot=it.reduce((a,[,v])=>a+weight(v),0),ul=$("list");ul.innerHTML="";
+  if(!it.length){const li=document.createElement("li");li.className="empty";li.style.display="block";li.textContent="No entries yet. Paste this week's suggestions above.";ul.append(li)}
+  it.forEach(([name,v],i)=>{
+    const li=document.createElement("li"),dot=document.createElement("span"),nm=document.createElement("input"),vt=document.createElement("input"),x=document.createElement("button"),pct=document.createElement("div");
+    dot.className="dot";dot.style.background=COLORS[i%COLORS.length];
+    nm.className="nm";nm.value=name;nm.id="nm-"+cat+"-"+i;nm.setAttribute("aria-label","Entry name");nm.onchange=()=>{const n=nm.value.trim();if(n){it[i][0]=n;save();draw()}else nm.value=it[i][0]};
+    vt.className="vt";vt.type="number";vt.min="0";vt.value=v;vt.id="vt-"+cat+"-"+i;vt.setAttribute("aria-label","Votes for "+name);vt.oninput=()=>{it[i][1]=Math.max(0,parseInt(vt.value)||0);save();render();const el=$("vt-"+cat+"-"+i);el&&el.focus()};
+    x.className="x";x.type="button";x.textContent="✕";x.setAttribute("aria-label","Remove "+name);x.onclick=()=>{it.splice(i,1);save();render()};
+    pct.className="pct";pct.textContent=v+" vote"+(v==1?"":"s")+" · "+Math.round(weight(v)/tot*100)+"% chance";
+    li.append(dot,nm,vt,x,pct);ul.append(li)});
+  $("spinBtn").disabled=spinning||it.length<2;$("addBtn").disabled=$("clearBtn").disabled=spinning;
+  $("copyBtn").hidden=!lastWin||spinning;
+  if(!spinning){$("result").textContent="";if(lastWin){$("result").textContent=lastWin.name;const s=document.createElement("small");s.textContent=CATS[cat].title+" pick · "+lastWin.votes+" votes · "+lastWin.pct+"% chance";$("result").append(s)}}
+  draw();
+}
+
+$("addBtn").onclick=()=>{
+  const lines=$("paste").value.split(/\n/).map(l=>l.trim()).filter(Boolean),it=items();let added=0,updated=0;
+  lines.forEach(l=>{const m=l.match(/^(.*?)[\s:,\-–]*(\d+)\s*(?:votes?|👍)?$/i);let name=(m?m[1]:l).replace(/^[-*•\d.)\s]+(?=\D)/,"").trim(),v=m?parseInt(m[2]):0;if(!name)return;
+    const ex=it.find(e=>e[0].toLowerCase()===name.toLowerCase());if(ex){ex[1]=v;updated++}else if(it.length<40){it.push([name.slice(0,40),v]);added++}});
+  $("msg").textContent=lines.length?("Added "+added+(updated?", updated "+updated:"")+"."+(it.length>=40?" The wheel holds 40 entries.":"")):"Paste at least one line first.";
+  if(lines.length)$("paste").value="";lastWin=null;save();render()};
+
+$("clearBtn").onclick=()=>{const b=$("clearBtn");if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Clear all? Click again";setTimeout(()=>{b.dataset.sure="";b.textContent="Clear wheel"},3000);return}
+  state.lists[cat]=[];lastWin=null;rot=0;b.dataset.sure="";b.textContent="Clear wheel";$("msg").textContent="Wheel cleared. Ready for next week.";save();render()};
+
+function spin(){
+  const it=items();if(spinning||it.length<2)return;const tot=it.reduce((a,[,v])=>a+weight(v),0);
+  let r=Math.random()*tot,acc=0,idx=0;for(let i=0;i<it.length;i++){const w=weight(it[i][1]);if(r<w){idx=i;break}r-=w;acc+=w}
+  const w=weight(it[idx][1]),mid=(acc+w*(0.12+Math.random()*0.76))/tot*Math.PI*2,target=-mid;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches,from=rot%(Math.PI*2),end=target-Math.PI*2*(reduce?0:7);
+  lastWin={name:it[idx][0],votes:it[idx][1],pct:Math.round(w/tot*100)};spinning=true;render();$("result").textContent="Spinning...";$("copyMsg").textContent="";
+  if(reduce){rot=target;spinning=false;render();return}
+  const t0=performance.now(),D=6000;(function f(t){const k=Math.min(1,(t-t0)/D),e=1-Math.pow(1-k,4);rot=from+(end-from)*e;draw();if(k<1)requestAnimationFrame(f);else{rot=target;spinning=false;render()}})(t0);
+}
+$("spinBtn").onclick=spin;$("wheel").onclick=spin;
+
+$("copyBtn").onclick=()=>{if(!lastWin)return;const c=CATS[cat],txt=c.emoji+" **"+c.title+":** "+lastWin.name+" ("+lastWin.votes+" votes, "+lastWin.pct+"% chance on the wheel)";
+  const done=()=>$("copyMsg").textContent="Copied. Paste it in #announcements.";
+  navigator.clipboard.writeText(txt).then(done).catch(()=>{$("paste").value=txt;$("paste").select();$("copyMsg").textContent="Couldn't copy automatically. The text is selected in the box on the right."})};
+
+addEventListener("resize",draw);
+render();
+</script>
+
+</body></html>
