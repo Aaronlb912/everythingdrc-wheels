@@ -100,7 +100,7 @@ function draw(){
   it.forEach(([name,v],i)=>{const span=weight(v)/tot*Math.PI*2;g.fillStyle=COLORS[i%COLORS.length];g.beginPath();g.moveTo(0,0);g.arc(0,0,R,a,a+span);g.closePath();g.fill();
     g.strokeStyle="rgba(255,255,255,.75)";g.lineWidth=3;g.stroke();
     if(span>0.1){g.save();g.rotate(a+span/2);g.fillStyle="#fff";g.font="700 "+(span>0.45?36:26)+"px "+css("--body");g.textAlign="right";g.textBaseline="middle";
-      let t=name;while(g.measureText(t).width>R-80&&t.length>3)t=t.slice(0,-2);if(t!==name)t+="…";g.fillText(t,R-26,0);g.restore()}
+      let t=name;while(g.measureText(t).width>R-80&&t.length>3)t=t.slice(0,-2);if(t!==name)t+="…";if(Math.cos(rot+a+span/2)<0){g.rotate(Math.PI);g.textAlign="left";g.fillText(t,-(R-26),0)}else g.fillText(t,R-26,0);g.restore()}
     a+=span});
   g.restore();g.fillStyle=css("--panel");g.beginPath();g.arc(S/2,S/2,44,0,7);g.fill();
 }
