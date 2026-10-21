@@ -32,3 +32,8 @@ for (const id of (process.env.OPEN || "").split(",").filter(Boolean)) {
   });
   console.log("opened", c.name);
 }
+const all = await api("/guilds/" + G + "/roles");
+for (const r of all) console.log("ROLE", r.name, BigInt(r.permissions) & VIEW ? "view" : "NO-view");
+const ob = await api("/guilds/" + G + "/onboarding").catch(e => ({ err: e.message }));
+console.log("ONBOARD enabled=" + ob.enabled, "mode=" + ob.mode, "defaults=" + (ob.default_channel_ids || []).map(id => name[id]).join(","));
+for (const p of ob.prompts || []) for (const o of p.options) console.log("OPTION", p.title, "/", o.title, "roles=" + o.role_ids.map(id => roles[id]).join(","), "chans=" + o.channel_ids.map(id => name[id]).join(","));
