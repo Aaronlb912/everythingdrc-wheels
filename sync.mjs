@@ -121,7 +121,6 @@ function listEmbed(cat) {
   return {
     color: COLOR,
     title: "📋 This week's " + l.noun + " suggestions",
-    url: WHEEL + "#" + cat,
     description: (it.length ? "Tap a name to jump to it and react 👍. Already listed? Vote instead of posting it again.\n\n" + body.trim()
       : "Nothing yet this week. Post the first " + l.noun + "!") + "\n\nResets <t:" + resetAt + ":R>.",
     footer: { text: "Wheel Sync · " + it.length + " suggestion" + (it.length === 1 ? "" : "s") + " · updates every 15 minutes" },
