@@ -1,4 +1,4 @@
-$("postBtn").hidden=!lastWin||spinning;<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">
 <title>Everythingdrc Wheels</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
@@ -119,7 +119,7 @@ function render(){
     pct.className="pct";pct.textContent=v+" vote"+(v==1?"":"s")+" · "+Math.round(weight(v)/tot*100)+"% chance";
     li.append(dot,nm,vt,x,pct);ul.append(li)});
   $("spinBtn").disabled=spinning||it.length<2;$("addBtn").disabled=$("clearBtn").disabled=spinning;
-  $("copyBtn").hidden=!lastWin||spinning;
+  $("copyBtn").hidden=!lastWin||spinning;$("postBtn").hidden=!lastWin||spinning;
   if(!spinning){$("result").textContent="";if(lastWin){$("result").textContent=lastWin.name;const s=document.createElement("small");s.textContent=CATS[cat].title+" pick · "+lastWin.votes+" votes · "+lastWin.pct+"% chance";$("result").append(s)}}
   draw();
 }
