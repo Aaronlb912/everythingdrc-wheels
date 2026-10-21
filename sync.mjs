@@ -92,6 +92,29 @@ const LABELS = {
   music: { title: "Song", noun: "song", emoji: "🎵" },
   gym: { title: "Gym", noun: "gym challenge", emoji: "🏋️" },
 };
+// Extra channels are found by name so emoji prefixes don't matter.
+const guildChannels = await api("/guilds/" + GUILD + "/channels").catch(() => []);
+const chan = part => guildChannels.find(c => c.type === 0 && c.name.includes(part))?.id;
+const msgLink = (ch, id) => "https://discord.com/channels/" + GUILD + "/" + ch + "/" + id;
+
+// Wheel picks: the wheel page's "Post to #announcements" message names the winner.
+// Newest post per category wins, so a re-spin just needs a new post, and deleting
+// the post clears the pick. Posts in the first 12 hours of Monday count for the
+// week before, in case Dennis spins late.
+const TITLES = { "Food Review Wednesday": "food", "Game of the week": "games", "Song of the week": "music", "Gym challenge": "gym" };
+const GRACE = 12 * 3600000, lastWkStart = new Date(since - 7 * 86400000).toISOString();
+const picks = { [since.toISOString()]: {}, [lastWkStart]: {} };
+const annCh = chan("announcements");
+if (annCh) {
+  const msgs = await api("/channels/" + annCh + "/messages?limit=100").catch(e => (console.warn("::warning::Can't read announcements: " + e.message), []));
+  for (const m of msgs) {
+    const hit = m.webhook_id && m.content.match(/^🎡 \*\*(.+?) winner:\*\* (.+) \(\d+ 👍\)$/u);
+    const cat = hit && TITLES[hit[1]];
+    const week = picks[weekStart(new Date(new Date(m.timestamp) - GRACE)).toISOString()];
+    if (cat && week && !week[cat]) week[cat] = { name: hit[2].slice(0, 60), link: msgLink(annCh, m.id) };
+  }
+}
+const pickNow = picks[since.toISOString()], pickLast = picks[lastWkStart];
 const resetAt = Math.floor(since.getTime() / 1000) + 7 * 86400;
 function cardEmbed(cat) {
   const l = LABELS[cat], it = lists[cat];
@@ -109,12 +132,13 @@ function cardEmbed(cat) {
       "✍️ **Suggest:** type a " + l.noun + " in this channel, one per message",
       "🎡 **Win:** most 👍 gets the biggest slice. Dennis spins at the end of the week.",
       "",
+      ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
       "**This week**",
       it.length ? body.trim() : "Nothing yet. Be the first!",
       "",
       "Resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 15 minutes" },
+    footer: { text: "Wheel Sync · updates every 5 minutes" },
   };
 }
 async function keep(key, channel, embed) {
@@ -146,10 +170,6 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
 const posted = { ...(prev.posted || {}) }, wk = since.toISOString();
 const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
 const etDay = etNow.getDay();
-// Extra channels are found by name so emoji prefixes don't matter.
-const guildChannels = await api("/guilds/" + GUILD + "/channels").catch(() => []);
-const chan = part => guildChannels.find(c => c.type === 0 && c.name.includes(part))?.id;
-const msgLink = (ch, id) => "https://discord.com/channels/" + GUILD + "/" + ch + "/" + id;
 async function say(channel, embed) {
   await api("/channels/" + channel + "/messages", "POST", { embeds: [{ color: COLOR, ...embed }] })
     .catch(e => console.warn("::warning::Couldn't post nudge: " + e.message));
@@ -169,20 +189,21 @@ if (etDay === 6 && posted.lastCall !== wk) {
 }
 // Winner history: when the week flips, post last week's most voted and an all-time tally.
 const wins = JSON.parse(JSON.stringify(prev.wins || {}));
-if (prev.weekStart && prev.weekStart !== wk && posted.winners !== wk) {
+if (prev.weekStart && prev.weekStart !== wk && posted.winners !== wk && Date.now() - since >= GRACE) {
   const lines = [];
   for (const cat of Object.keys(CHANNELS)) {
-    const top = prev.lists?.[cat]?.[0];
+    const top = prev.lists?.[cat]?.[0], pick = pickLast[cat];
+    if (pick) lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (wheel):** [" + pick.name + "](" + pick.link + ")");
     if (!top) continue;
     const t = wins[cat] ||= {}, k = top[0].toLowerCase();
     t[k] = { name: top[0], n: (t[k]?.n || 0) + 1 };
-    lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + ":** " + top[0] + " · " + top[1] + " 👍");
+    lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (most voted):** " + top[0] + " · " + top[1] + " 👍");
   }
-  posted.lastFood = prev.lists?.food?.[0]?.[0] || null;
+  posted.lastFood = pickLast.food?.name || prev.lists?.food?.[0]?.[0] || null;
   const allTime = Object.entries(wins).map(([cat, t]) => LABELS[cat].emoji + " " +
     Object.values(t).sort((a, b) => b.n - a.n).slice(0, 3).map(x => x.name + " (" + x.n + ")").join(", ")).join("\n");
   const winCh = chan("wheel-winners");
-  if (winCh && lines.length) await say(winCh, { title: "🏆 Last week's most voted", description: lines.join("\n") + "\n\n**All-time wins**\n" + allTime });
+  if (winCh && lines.length) await say(winCh, { title: "🏆 Last week's winners", description: lines.join("\n") + "\n\n**All-time wins**\n" + allTime });
   posted.winners = wk;
 }
 
@@ -242,7 +263,7 @@ if (gymCh) {
       "",
       "✅ = checked in this week. Week resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 15 minutes" },
+    footer: { text: "Wheel Sync · updates every 5 minutes" },
   });
 }
 
