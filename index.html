@@ -52,7 +52,7 @@ li .x{padding:4px 9px}
 <div class="wrap">
   <header>
     <h1>Everythingdrc Wheels</h1>
-    <p>Suggest in the Discord channel. React with any emoji to vote. Most votes gets the biggest slice. Resets every Monday.</p>
+    <p>Suggest in the Discord channel. React with any emoji to vote. Most votes gets the biggest slice. Resets every Tuesday at 9 PM ET.</p>
     <div class="tabs" role="tablist" id="tabs"></div>
   </header>
   <div class="grid">
@@ -168,7 +168,7 @@ if(location.protocol.startsWith("http"))fetch("data.json",{cache:"no-store"}).th
   const cats=Object.keys(d.lists||{}).filter(k=>CATS[k]);if(!cats.length)return;
   cats.forEach(k=>state.lists[k]=d.lists[k]);if(!spinning){lastWin=null;save();render()}
   const when=new Date(d.updated||d.weekStart).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"});
-  $("msg").textContent="Synced from Discord ("+cats.map(k=>CATS[k].label).join(", ")+"). Updated "+when+". Resets Monday.";
+  $("msg").textContent="Synced from Discord ("+cats.map(k=>CATS[k].label).join(", ")+"). Updated "+when+". Resets Tuesday 9 PM ET.";
 }).catch(()=>{if(location.hostname.endsWith("github.io"))$("msg").textContent="Couldn't load this week's Discord entries. Showing the last saved list."});
 render();
 </script>

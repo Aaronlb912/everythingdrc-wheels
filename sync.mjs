@@ -13,12 +13,15 @@ const PLAIN = { music: "1562529917546274817" };
 
 const GUILD = "1533847576619520082";
 
-// Week starts Monday 00:00 US Eastern.
+// Week starts Tuesday 9 PM US Eastern.
+const RESET_HOUR = 21;
 function weekStart(now = new Date()) {
   const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
   const offset = now - et;
+  et.setHours(et.getHours() - RESET_HOUR, 0, 0, 0);
   et.setHours(0, 0, 0, 0);
-  et.setDate(et.getDate() - ((et.getDay() + 6) % 7));
+  et.setDate(et.getDate() - ((et.getDay() + 5) % 7));
+  et.setHours(RESET_HOUR);
   return new Date(Math.round((et.getTime() + offset) / 60000) * 60000);
 }
 
@@ -75,11 +78,14 @@ async function channelEntries(id, since) {
 }
 
 const since = weekStart();
+// The reset moved from Monday 00:00 to Tuesday 9 PM mid-week. Keep that week's
+// Monday and Tuesday suggestions; this does nothing after Oct 27 2026.
+const listFrom = new Date(Math.min(since, Date.parse("2026-10-19T04:00:00Z")));
 const lists = {};
 for (const [cat, id] of Object.entries(CHANNELS)) {
   if (!id) continue;
   const merged = new Map();
-  for (const [name, v, link] of await channelEntries(id, since)) {
+  for (const [name, v, link] of await channelEntries(id, listFrom)) {
     const k = name.toLowerCase();
     const cur = merged.get(k);
     // Repeats add their votes to the first post, which keeps the link.
@@ -108,10 +114,10 @@ const msgLink = (ch, id) => "https://discord.com/channels/" + GUILD + "/" + ch +
 
 // Wheel picks: the wheel page's "Post to #announcements" message names the winner.
 // Newest post per category wins, so a re-spin just needs a new post, and deleting
-// the post clears the pick. Posts in the first 12 hours of Monday count for the
-// week before, in case Dennis spins late.
+// the post clears the pick. Posts in the first 24 hours after the reset count for
+// the week before, so Wednesday's spin lands on the week that was voted on.
 const TITLES = { "Food Review Wednesday": "food", "Game of the week": "games", "Song of the week": "music", "Gym challenge": "gym" };
-const GRACE = 12 * 3600000, lastWkStart = new Date(since - 7 * 86400000).toISOString();
+const GRACE = 24 * 3600000, lastWkStart = new Date(since - 7 * 86400000).toISOString();
 const picks = { [since.toISOString()]: {}, [lastWkStart]: {} };
 const annCh = chan("announcements");
 if (annCh) {
@@ -192,13 +198,21 @@ for (const [cat, id] of Object.entries(PLAIN)) {
 }
 // One post per channel when the week flips, and a last call on Saturday (ET).
 const posted = { ...(prev.posted || {}) }, wk = since.toISOString();
+// A week start less than 6 days after the last one is the schedule change, not a
+// new week: carry this week's posts over instead of announcing a reset.
+const moved = prev.weekStart && since - new Date(prev.weekStart) < 6 * 86400000;
+if (moved) for (const [k, v] of Object.entries(posted)) {
+  if (v === prev.weekStart) posted[k] = wk;
+  else if (v?.wk === prev.weekStart) posted[k] = { ...v, wk };
+}
+const flipped = prev.weekStart && prev.weekStart !== wk && !moved;
 const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
 const etDay = etNow.getDay();
 async function say(channel, embed) {
   await api("/channels/" + channel + "/messages", "POST", { embeds: [{ color: COLOR, ...embed }] })
     .catch(e => console.warn("::warning::Couldn't post nudge: " + e.message));
 }
-if (prev.weekStart && prev.weekStart !== wk && posted.reset !== wk) {
+if (flipped && posted.reset !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) if (id)
     await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
   posted.reset = wk;
@@ -213,7 +227,7 @@ if (etDay === 6 && posted.lastCall !== wk) {
 }
 // Winner history: when the week flips, post last week's most voted and an all-time tally.
 const wins = JSON.parse(JSON.stringify(prev.wins || {}));
-if (prev.weekStart && prev.weekStart !== wk && posted.winners !== wk && Date.now() - since >= GRACE) {
+if (flipped && posted.winners !== wk && Date.now() - since >= GRACE) {
   const lines = [];
   for (const cat of Object.keys(CHANNELS)) {
     const top = prev.lists?.[cat]?.[0], pick = pickLast[cat];
