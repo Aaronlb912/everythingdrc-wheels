@@ -1,0 +1,19 @@
+name: Channel permissions (one time)
+on:
+  workflow_dispatch:
+    inputs:
+      open:
+        description: Comma-separated channel IDs to open to everyone (blank = list only)
+        default: ""
+jobs:
+  perms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node perms.mjs
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          OPEN: ${{ inputs.open }}
