@@ -34,7 +34,9 @@ for (const [id, [title, description]] of Object.entries(INTROS)) {
     const me = await api("/users/@me");
     const pins = await api("/channels/" + id + "/pins").catch(() => []);
     if (pins.some(p => p.author.id === me.id)) { console.log("skip", title); continue; }
-    const msg = await api("/channels/" + id + "/messages", "POST", { embeds: [{ color: 0xe2552e, title, description }] });
+    const recent = await api("/channels/" + id + "/messages?limit=50").catch(() => []);
+    const msg = recent.find(m => m.author.id === me.id && m.embeds?.[0]?.title === title)
+      || await api("/channels/" + id + "/messages", "POST", { embeds: [{ color: 0xe2552e, title, description }] });
     await api("/channels/" + id + "/pins/" + msg.id, "PUT");
     console.log("posted", title);
   } catch (e) {
