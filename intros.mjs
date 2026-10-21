@@ -8,7 +8,7 @@ async function api(path, method = "GET", body) {
       headers: { Authorization: "Bot " + TOKEN, ...(body && { "Content-Type": "application/json" }) },
       body: body && JSON.stringify(body),
     });
-    if (r.status === 429) { await new Promise(s => setTimeout(s, ((await r.json()).retry_after || 1) * 1000)); continue; }
+    if (r.status === 429) { const wait = ((await r.json()).retry_after || 1) * 1000; await new Promise(s => setTimeout(s, wait)); continue; }
     if (!r.ok) throw new Error(path + " -> " + r.status + " " + (await r.text()));
     return r.status === 204 ? null : r.json();
   }
