@@ -187,7 +187,7 @@ for (const [cat, id] of Object.entries(PLAIN)) {
   await keep(cat + "_card", id, {
     color: COLOR,
     title: LABELS[cat].emoji + " " + LABELS[cat].title + " suggestions",
-    description: "Got a " + LABELS[cat].noun + " Dennis should check out? Post it here, one per message. React to the ones you like.",
+    description: "Got a " + LABELS[cat].noun + " Dennis should check out? Post it here. React to the ones you like.",
   });
 }
 // One post per channel when the week flips, and a last call on Saturday (ET).
