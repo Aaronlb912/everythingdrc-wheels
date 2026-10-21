@@ -1,0 +1,14 @@
+name: Post channel intros (one time)
+on:
+  workflow_dispatch:
+jobs:
+  intros:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node intros.mjs
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
