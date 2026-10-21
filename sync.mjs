@@ -47,6 +47,8 @@ async function channelEntries(id, since) {
       const name = entryName(m);
       if (!name) continue;
       const up = m.reactions?.find(r => r.emoji.name === "👍")?.count || 0;
+      // Bot posts without a 👍 are setup or system messages, not suggestions.
+      if (m.author.bot && !up) continue;
       // Bots that auto-react (Carl-bot) add one 👍 of their own.
       out.push([name, Math.max(0, m.author.bot ? up - 1 : up)]);
     }
