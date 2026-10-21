@@ -162,7 +162,7 @@ $("copyBtn").onclick=()=>{if(!lastWin)return;const c=CATS[cat],txt=c.emoji+" **"
   navigator.clipboard.writeText(txt).then(done).catch(()=>{$("paste").value=txt;$("paste").select();$("copyMsg").textContent="Couldn't copy automatically. The text is selected in the box on the right."})};
 
 addEventListener("resize",draw);
-// On GitHub Pages, a GitHub Action writes data.json from Discord every 5 minutes.
+// On GitHub Pages, a GitHub Action writes data.json from Discord every 2 minutes.
 // Tabs it covers are replaced with this week's entries on every load.
 if(location.protocol.startsWith("http"))fetch("data.json",{cache:"no-store"}).then(r=>{if(!r.ok)throw r.status;return r.json()}).then(d=>{
   const cats=Object.keys(d.lists||{}).filter(k=>CATS[k]);if(!cats.length)return;

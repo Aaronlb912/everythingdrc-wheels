@@ -60,7 +60,8 @@ async function channelEntries(id, since) {
       // system messages; Carl-bot suggestions always carry its own reaction.
       if (m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
       // Each person counts once however many emojis they add. Bots don't count.
-      const voters = new Set();
+      // Suggesting counts as your vote.
+      const voters = new Set(m.author.bot ? [] : [m.author.id]);
       for (const r of m.reactions || []) {
         const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
         const users = await api(`/channels/${id}/messages/${m.id}/reactions/${e}?limit=100`).catch(() => []);
@@ -146,18 +147,26 @@ function cardEmbed(cat) {
       "",
       "Resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 5 minutes" },
+    footer: { text: "Wheel Sync · updates every 2 minutes" },
   };
 }
+// When chat pushes the card more than BURY messages up, repost it at the bottom.
+const BURY = 20;
 async function keep(key, channel, embed) {
   const text = JSON.stringify(embed), old = boards[key];
-  if (old && old.text === text) return;
+  const recent = old?.id ? await api("/channels/" + channel + "/messages?limit=" + BURY).catch(() => null) : null;
+  const buried = recent?.length === BURY && !recent.some(m => m.id === old.id);
+  if (old && old.text === text && !buried) return;
   const body = { content: "", embeds: [embed] };
   try {
     let msg = null;
-    if (old?.id) msg = await api("/channels/" + channel + "/messages/" + old.id, "PATCH", body).catch(() => null);
+    if (buried) await api("/channels/" + channel + "/messages/" + old.id, "DELETE").catch(() => null);
+    else if (old?.id) msg = await api("/channels/" + channel + "/messages/" + old.id, "PATCH", body).catch(() => null);
     // An edit that comes back without the embed is useless; post a new card.
-    if (!msg?.embeds?.length) msg = await api("/channels/" + channel + "/messages", "POST", body);
+    if (!msg?.embeds?.length) {
+      msg = await api("/channels/" + channel + "/messages", "POST", body);
+      await api("/channels/" + channel + "/pins/" + msg.id, "PUT").catch(e => console.warn("::warning::Couldn't pin " + key + ": " + e.message));
+    }
     boards[key] = { id: msg.id, text };
   } catch (e) {
     console.warn("::warning::Couldn't post " + key + ": " + e.message);
@@ -271,7 +280,7 @@ if (gymCh) {
       "",
       "✅ = checked in this week. Week resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 5 minutes" },
+    footer: { text: "Wheel Sync · updates every 2 minutes" },
   });
 }
 

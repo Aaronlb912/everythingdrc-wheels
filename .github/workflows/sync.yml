@@ -1,26 +1,41 @@
 name: Sync wheel from Discord
+# GitHub's own schedule is slow and skips runs, so each run syncs every
+# 2 minutes for about 50 minutes, then starts the next run itself.
+# The hourly schedule restarts the chain if it ever stops.
+# Cancel a run in the Actions tab to stop the chain.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 concurrency: sync
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 58
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node sync.mjs
-        env:
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
       - run: |
-          [ -z "$(git status --porcelain data.json)" ] && exit 0
           git config user.name "wheel-sync"
           git config user.email "wheel-sync@users.noreply.github.com"
-          git add data.json
-          git commit -m "sync wheel entries"
-          git push
+          for i in $(seq 25); do
+            git pull -q --rebase || true
+            node sync.mjs || true
+            if [ -n "$(git status --porcelain data.json)" ]; then
+              git add data.json
+              git commit -qm "sync wheel entries"
+              git pull -q --rebase && git push -q || true
+            fi
+            if [ "$i" -lt 25 ]; then sleep 120; fi
+          done
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+      - if: success() || failure()
+        run: gh workflow run sync.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
