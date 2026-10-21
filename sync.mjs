@@ -31,7 +31,7 @@ async function api(path, method = "GET", body) {
     });
     if (r.status === 429) { const wait = ((await r.json()).retry_after || 1) * 1000; await new Promise(s => setTimeout(s, wait)); continue; }
     if (!r.ok) throw new Error(path + " -> " + r.status + " " + (await r.text()));
-    return r.json();
+    return r.status === 204 ? null : r.json();
   }
   throw new Error(path + " -> rate limited");
 }
@@ -144,7 +144,12 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
 }
 // One post per channel when the week flips, and a last call on Saturday (ET).
 const posted = { ...(prev.posted || {}) }, wk = since.toISOString();
-const etDay = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" })).getDay();
+const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+const etDay = etNow.getDay();
+// Extra channels are found by name so emoji prefixes don't matter.
+const guildChannels = await api("/guilds/" + GUILD + "/channels").catch(() => []);
+const chan = part => guildChannels.find(c => c.type === 0 && c.name.includes(part))?.id;
+const msgLink = (ch, id) => "https://discord.com/channels/" + GUILD + "/" + ch + "/" + id;
 async function say(channel, embed) {
   await api("/channels/" + channel + "/messages", "POST", { embeds: [{ color: COLOR, ...embed }] })
     .catch(e => console.warn("::warning::Couldn't post nudge: " + e.message));
@@ -162,8 +167,87 @@ if (etDay === 6 && posted.lastCall !== wk) {
   }
   posted.lastCall = wk;
 }
-const next = { weekStart: since.toISOString(), lists, boards, posted };
-if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {} }) === JSON.stringify(next)) {
+// Winner history: when the week flips, post last week's most voted and an all-time tally.
+const wins = JSON.parse(JSON.stringify(prev.wins || {}));
+if (prev.weekStart && prev.weekStart !== wk && posted.winners !== wk) {
+  const lines = [];
+  for (const cat of Object.keys(CHANNELS)) {
+    const top = prev.lists?.[cat]?.[0];
+    if (!top) continue;
+    const t = wins[cat] ||= {}, k = top[0].toLowerCase();
+    t[k] = { name: top[0], n: (t[k]?.n || 0) + 1 };
+    lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + ":** " + top[0] + " · " + top[1] + " 👍");
+  }
+  posted.lastFood = prev.lists?.food?.[0]?.[0] || null;
+  const allTime = Object.entries(wins).map(([cat, t]) => LABELS[cat].emoji + " " +
+    Object.values(t).sort((a, b) => b.n - a.n).slice(0, 3).map(x => x.name + " (" + x.n + ")").join(", ")).join("\n");
+  const winCh = chan("wheel-winners");
+  if (winCh && lines.length) await say(winCh, { title: "🏆 Last week's most voted", description: lines.join("\n") + "\n\n**All-time wins**\n" + allTime });
+  posted.winners = wk;
+}
+
+// Clip of the week: Sunday, repost the #fan-clips post with the most reactions.
+const clipCh = chan("fan-clips");
+if (etDay === 0 && clipCh && posted.clip !== wk) {
+  const msgs = await api("/channels/" + clipCh + "/messages?limit=100").catch(() => []);
+  const best = msgs.filter(m => !m.author.bot && new Date(m.timestamp) >= since)
+    .map(m => [m, (m.reactions || []).reduce((n, r) => n + r.count, 0)]).sort((a, b) => b[1] - a[1])[0];
+  if (best?.[1]) await say(clipCh, { title: "🎬 Clip of the week", description: "<@" + best[0].author.id + "> with **" + best[1] + "** reactions\n[Watch it](" + msgLink(clipCh, best[0].id) + ")\n\nReact to clips all week. Most reactions wins on Sunday." });
+  posted.clip = wk;
+}
+
+// Food score: after Wednesday's stream, ask for a 1-10 rating; post the average Friday.
+const RATE = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+const rateCh = chan("general-food-reviews");
+const food = posted.lastFood ? "**" + posted.lastFood + "**" : "this week's food";
+if (rateCh && etDay === 3 && etNow.getHours() >= 19 && posted.rate?.wk !== wk) {
+  const m = await api("/channels/" + rateCh + "/messages", "POST", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: "How was " + food + "? Tap a number below, 1 to 10. Score posts Friday." }] })
+    .catch(e => console.warn("::warning::Couldn't post rating: " + e.message));
+  if (m) {
+    for (const e of RATE) await api("/channels/" + rateCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent(e) + "/@me", "PUT").catch(() => null);
+    posted.rate = { wk, id: m.id };
+  }
+}
+if (rateCh && posted.rate?.wk === wk && !posted.rate.done && etDay >= 5) {
+  const m = await api("/channels/" + rateCh + "/messages/" + posted.rate.id).catch(() => null);
+  let votes = 0, sum = 0;
+  for (const r of m?.reactions || []) {
+    const i = RATE.indexOf(r.emoji.name), n = r.count - (r.me ? 1 : 0);
+    if (i >= 0 && n > 0) { votes += n; sum += n * (i + 1); }
+  }
+  if (m) await say(rateCh, { title: "⭐ Food score: " + (votes ? (sum / votes).toFixed(1) + "/10" : "no votes"), description: food + " · " + votes + " vote" + (votes === 1 ? "" : "s") + "\n[See the votes](" + msgLink(rateCh, m.id) + ")" });
+  posted.rate = { ...posted.rate, done: true };
+}
+
+// Gym check-ins: one post in #gym-progress per week keeps a streak going.
+const gym = JSON.parse(JSON.stringify(prev.gym || {}));
+const gymCh = chan("gym-progress"), lastWk = new Date(since - 7 * 86400000).toISOString();
+if (gymCh) {
+  const msgs = await api("/channels/" + gymCh + "/messages?limit=100").catch(e => (console.warn("::warning::Can't read gym channel: " + e.message), []));
+  for (const m of msgs) {
+    if (m.author.bot || new Date(m.timestamp) < since) continue;
+    const g = gym[m.author.id] ||= { last: null, streak: 0 };
+    if (g.last !== wk) { g.streak = g.last === lastWk ? g.streak + 1 : 1; g.last = wk; }
+  }
+  const live = Object.entries(gym).filter(([, g]) => g.last === wk || g.last === lastWk).sort((a, b) => b[1].streak - a[1].streak).slice(0, 20);
+  await keep("gym_card", gymCh, {
+    color: COLOR,
+    title: "🏋️ Gym check-ins",
+    description: [
+      "📸 **Check in:** post your workout here. Once a week is enough.",
+      "🔥 **Streak:** weeks in a row you checked in",
+      "",
+      "**Streaks**",
+      live.length ? live.map(([id, g], i) => (i + 1) + ". <@" + id + "> · " + g.streak + " wk" + (g.last === wk ? " ✅" : "")).join("\n") : "No check-ins yet. Be the first!",
+      "",
+      "✅ = checked in this week. Week resets <t:" + resetAt + ":R>",
+    ].join("\n"),
+    footer: { text: "Wheel Sync · updates every 15 minutes" },
+  });
+}
+
+const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym };
+if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {}, wins: prev.wins || {}, gym: prev.gym || {} }) === JSON.stringify(next)) {
   console.log("no change");
 } else {
   fs.writeFileSync("data.json", JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1) + "\n");
