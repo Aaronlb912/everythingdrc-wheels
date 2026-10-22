@@ -41,3 +41,6 @@ const MENTION = 1n << 17n, live = chans.find(c => c.name === "live-alerts");
 for (const r of all) if (BigInt(r.permissions) & (MENTION | 8n)) console.log("MENTION role", r.name, BigInt(r.permissions) & 8n ? "admin" : "");
 for (const o of live?.permission_overwrites || []) console.log("MENTION live", roles[o.id] || o.id, BigInt(o.allow) & MENTION ? "+mention" : "", BigInt(o.deny) & MENTION ? "-mention" : "");
 console.log("MENTION me", (await api("/users/@me")).username, (await api("/guilds/" + G + "/members/" + (await api("/users/@me")).id)).roles.map(id => roles[id]).join(","));
+// Let the bot's live alert ping @everyone, in #live-alerts only.
+const ws = all.find(r => r.name === "Wheel Sync"), wo = live.permission_overwrites.find(o => o.id === ws.id) || { allow: "0", deny: "0" };
+if (!(BigInt(wo.allow) & MENTION)) { await api("/channels/" + live.id + "/permissions/" + ws.id, "PUT", { type: 0, allow: String(BigInt(wo.allow) | MENTION), deny: String(BigInt(wo.deny) & ~MENTION) }); console.log("MENTION granted"); }
