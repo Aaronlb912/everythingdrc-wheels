@@ -1,0 +1,17 @@
+name: Watchdog
+# Fails (and GitHub emails) when DRC Bot on the Oracle server is down or hasn't
+# synced in 15 minutes. The key can only run the health check.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          echo "$KEY" > k && chmod 600 k
+          ssh -i k -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 ubuntu@150.136.4.23 health
+        env:
+          KEY: ${{ secrets.WATCHDOG_KEY }}
