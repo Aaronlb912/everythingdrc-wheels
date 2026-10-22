@@ -41,3 +41,4 @@ const MENTION = 1n << 17n, live = chans.find(c => c.name.includes("live-alerts")
 for (const r of all) if (BigInt(r.permissions) & (MENTION | 8n)) console.log("MENTION role", r.name, BigInt(r.permissions) & 8n ? "admin" : "");
 for (const o of live?.permission_overwrites || []) console.log("MENTION live", roles[o.id] || o.id, BigInt(o.allow) & MENTION ? "+mention" : "", BigInt(o.deny) & MENTION ? "-mention" : "");
 console.log("MENTION me", (await api("/users/@me")).username, (await api("/guilds/" + G + "/members/" + (await api("/users/@me")).id)).roles.map(id => roles[id]).join(","));
+console.log("ICON", (await api("/guilds/" + G)).icon);
