@@ -305,6 +305,40 @@ if (gymCh) {
   });
 }
 
+// Live alert: one post in #live-alerts per stream. Uses a Twitch app's keys,
+// not Dennis's login. Skipped until TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are set.
+const TWITCH_LOGIN = "everythingdrc";
+const liveCh = chan("live-alerts");
+if (liveCh && process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET) {
+  try {
+    const id = process.env.TWITCH_CLIENT_ID;
+    const auth = await fetch("https://id.twitch.tv/oauth2/token?client_id=" + id + "&client_secret=" + process.env.TWITCH_CLIENT_SECRET + "&grant_type=client_credentials", { method: "POST" });
+    if (!auth.ok) throw new Error("token " + auth.status);
+    const r = await fetch("https://api.twitch.tv/helix/streams?user_login=" + TWITCH_LOGIN, {
+      headers: { "Client-Id": id, Authorization: "Bearer " + (await auth.json()).access_token },
+    });
+    if (!r.ok) throw new Error("streams " + r.status);
+    const stream = (await r.json()).data?.[0];
+    if (stream && posted.live !== stream.id) {
+      const url = "https://twitch.tv/" + TWITCH_LOGIN;
+      await api("/channels/" + liveCh + "/messages", "POST", {
+        content: "@everyone Dennis is live!",
+        allowed_mentions: { parse: ["everyone"] },
+        embeds: [{
+          color: COLOR,
+          title: stream.title || "Live on Twitch",
+          url,
+          description: (stream.game_name ? "Playing **" + stream.game_name + "**\n" : "") + "[Watch on Twitch](" + url + ")",
+          image: { url: stream.thumbnail_url.replace("{width}", "1280").replace("{height}", "720") + "?t=" + Date.now() },
+        }],
+      });
+      posted.live = stream.id;
+    }
+  } catch (e) {
+    console.warn("::warning::Live check failed: " + e.message);
+  }
+}
+
 const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym };
 if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {}, wins: prev.wins || {}, gym: prev.gym || {} }) === JSON.stringify(next)) {
   console.log("no change");
