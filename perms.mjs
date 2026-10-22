@@ -42,3 +42,4 @@ for (const r of all) if (BigInt(r.permissions) & (MENTION | 8n)) console.log("ME
 for (const o of live?.permission_overwrites || []) console.log("MENTION live", roles[o.id] || o.id, BigInt(o.allow) & MENTION ? "+mention" : "", BigInt(o.deny) & MENTION ? "-mention" : "");
 console.log("MENTION me", (await api("/users/@me")).username, (await api("/guilds/" + G + "/members/" + (await api("/users/@me")).id)).roles.map(id => roles[id]).join(","));
 console.log("ICON", (await api("/guilds/" + G)).icon);
+for (const r of (await api("/guilds/" + G + "/roles")).sort((a, b) => b.position - a.position)) console.log("POS", r.position, r.name, BigInt(r.permissions) & (1n << 28n) ? "manage-roles" : "");
