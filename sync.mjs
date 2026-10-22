@@ -1,5 +1,6 @@
 // Reads this week's suggestions from Discord and writes data.json for the wheel.
 // A suggestion is one message; its votes are the people who reacted to it, with any emoji.
+import { parseDay, dayName, welcomeCard, form } from "./lib.mjs";
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1); }
 // XP, birthdays, streaks and role picks are kept in state.enc, encrypted with this
@@ -44,8 +45,8 @@ async function api(path, method = "GET", body) {
   for (let i = 0; i < 5; i++) {
     const r = await fetch("https://discord.com/api/v10" + path, {
       method,
-      headers: { Authorization: "Bot " + TOKEN, ...(body && { "Content-Type": "application/json" }) },
-      body: body && JSON.stringify(body),
+      headers: { Authorization: "Bot " + TOKEN, ...(body && !(body instanceof FormData) && { "Content-Type": "application/json" }) },
+      body: body instanceof FormData ? body : body && JSON.stringify(body),
     });
     if (r.status === 429) { const wait = ((await r.json()).retry_after || 1) * 1000; await new Promise(s => setTimeout(s, wait)); continue; }
     if (!r.ok) throw new Error(path + " -> " + r.status + " " + (await r.text()));
@@ -170,7 +171,7 @@ function cardEmbed(cat) {
       "",
       "Resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "DRC Bot · updates every 2 minutes" },
+    footer: { text: "DRC Bot" },
   };
 }
 // When chat pushes the card more than BURY messages up, repost it at the bottom.
@@ -318,7 +319,7 @@ if (gymCh) {
       "",
       "✅ = checked in this week. Week resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "DRC Bot · updates every 2 minutes" },
+    footer: { text: "DRC Bot" },
   });
 }
 
@@ -365,6 +366,8 @@ function levelOf(xp) { let l = 0; while (xp >= need(l)) xp -= need(l++); return 
 const levels = JSON.parse(JSON.stringify(prev.levels || {}));
 levels.users ||= {};
 levels.last ||= {};
+const noxp = levels.noxp || { channels: [], roles: [] };
+const rolesOf = {};
 if (!levels.seeded) {
   const snap = JSON.parse(fs.readFileSync("mee6-snapshot.json", "utf8"));
   for (const p of snap.players) {
@@ -384,8 +387,13 @@ for (const c of guildChannels.filter(c => c.type === 0)) {
   levels.last[c.id] = msgs[0].id;
   // First sight of a channel only marks where to start.
   if (!after) continue;
+  if (noxp.channels.includes(c.id) || noxp.channels.includes(c.parent_id)) continue;
   for (const m of msgs.reverse()) {
     if (m.author.bot || m.webhook_id) continue;
+    if (noxp.roles.length) {
+      rolesOf[m.author.id] ||= (await api("/guilds/" + GUILD + "/members/" + m.author.id).catch(() => null))?.roles || [];
+      if (rolesOf[m.author.id].some(r => noxp.roles.includes(r))) continue;
+    }
     const u = levels.users[m.author.id] ||= { xp: 0, msgs: 0, at: 0 };
     const t = Date.parse(m.timestamp);
     u.msgs++;
@@ -420,7 +428,7 @@ if (lvCh) {
       "",
       top.length ? top.map(([id, u], i) => (i + 1) + ". <@" + id + "> · level " + levelOf(u.xp) + " · " + u.xp + " XP").join("\n") : "No XP yet. Say something!",
     ].join("\n"),
-    footer: { text: "DRC Bot · updates every 2 minutes" },
+    footer: { text: "DRC Bot" },
   });
 }
 
@@ -474,7 +482,8 @@ if (sysCh) {
     const link = part => chan(part) ? "<#" + chan(part) + ">" : "#" + part;
     for (const m of msgs.reverse()) {
       if (m.type !== 7) continue;
-      await api("/channels/" + sysCh + "/messages", "POST", {
+      const card = await welcomeCard({ user: m.author, count: guild.approximate_member_count }).catch(e => console.warn("::warning::Welcome card failed: " + e.message));
+      const msg = {
         content: "Hey <@" + m.author.id + ">, welcome to **EverythingDRC**! Grab your roles in " + link("roles") + ", check " + link("schedule") + " for stream times. Come say hi in " + link("general") + "! 👋",
         allowed_mentions: { users: [m.author.id] },
         message_reference: { message_id: m.id, fail_if_not_exists: false },
@@ -484,7 +493,10 @@ if (sysCh) {
           description: guild.approximate_member_count ? "Member #" + guild.approximate_member_count : undefined,
           thumbnail: m.author.avatar ? { url: "https://cdn.discordapp.com/avatars/" + m.author.id + "/" + m.author.avatar + ".png" } : undefined,
         }],
-      }).catch(e => console.warn("::warning::Couldn't welcome: " + e.message));
+      };
+      if (card) msg.embeds = [{ color: COLOR, image: { url: "attachment://welcome.png" } }];
+      await api("/channels/" + sysCh + "/messages", "POST", card ? form(msg, "welcome.png", card) : msg)
+        .catch(e => console.warn("::warning::Couldn't welcome: " + e.message));
     }
   }
   if (newest) posted.welcome = newest;
@@ -492,21 +504,12 @@ if (sysCh) {
 
 // Birthdays: post your date in #birthdays. Only month and day are kept. The bot
 // reacts 🎂 when it understood, and wishes you happy birthday in #general.
-const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-function parseDay(text) {
-  let mo, d;
-  const num = text.match(/\b(\d{1,2})[\/.-](\d{1,2})\b/);
-  const word = text.toLowerCase().match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/);
-  if (num) [mo, d] = [+num[1], +num[2]];
-  else if (word) [mo, d] = [MONTHS.indexOf(word[1]) + 1, +word[2]];
-  else return null;
-  if (mo < 1 || mo > 12 || d < 1 || d > new Date(2024, mo, 0).getDate()) return null;
-  return String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
-}
-const bdays = { ...(prev.bdays || {}) };
+const bdays = { ...(prev.bdays || {}) }, byear = { ...(prev.byear || {}) };
+const nth = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 const bdayCh = chan("birthdays");
 if (bdayCh) {
-  const msgs = await api("/channels/" + bdayCh + "/messages?limit=100").catch(() => []);
+  const msgs = await api("/channels/" + bdayCh + "/messages?limit=100" + (posted.bdayLast ? "&after=" + posted.bdayLast : "")).catch(() => []);
+  if (msgs[0]) posted.bdayLast = msgs[0].id;
   // Oldest first so a newer post replaces an older one.
   for (const m of msgs.reverse()) {
     if (m.author.bot) continue;
@@ -520,11 +523,29 @@ if (bdayCh) {
   posted.bday ||= {};
   for (const [id, day] of Object.entries(bdays)) {
     if (day !== today || posted.bday[id] === etNow.getFullYear() || etNow.getHours() < 9 || !genCh) continue;
+    const age = byear[id] && etNow.getFullYear() - byear[id];
     await api("/channels/" + genCh + "/messages", "POST", {
-      content: "🎂 Happy birthday <@" + id + ">!",
+      content: "🎂 Happy " + (age ? nth(age) + " " : "") + "birthday <@" + id + ">!",
       allowed_mentions: { users: [id] },
     }).catch(e => console.warn("::warning::Couldn't post birthday: " + e.message));
     posted.bday[id] = etNow.getFullYear();
+  }
+  posted.bdayRole ||= {};
+  const due = Object.keys(bdays).filter(id => bdays[id] === today && etNow.getHours() >= 9 && !posted.bdayRole[id]);
+  const done = Object.keys(posted.bdayRole).filter(id => posted.bdayRole[id] !== today);
+  if (due.length || done.length) {
+    guildRoles ||= await api("/guilds/" + GUILD + "/roles").catch(() => []);
+    let role = guildRoles.find(r => r.name === "Birthday");
+    if (!role && due.length) role = await api("/guilds/" + GUILD + "/roles", "POST", { name: "Birthday", color: 0xe2552e, hoist: true })
+      .catch(e => console.warn("::warning::Couldn't make Birthday role: " + e.message));
+    for (const id of due) {
+      if (role) await api("/guilds/" + GUILD + "/members/" + id + "/roles/" + role.id, "PUT").catch(e => console.warn("::warning::Couldn't give Birthday: " + e.message));
+      posted.bdayRole[id] = today;
+    }
+    for (const id of done) {
+      if (role) await api("/guilds/" + GUILD + "/members/" + id + "/roles/" + role.id, "DELETE").catch(() => null);
+      delete posted.bdayRole[id];
+    }
   }
   const key = d => (d < today ? "1" : "0") + d;
   const soon = Object.entries(bdays).sort((a, b) => key(a[1]).localeCompare(key(b[1]))).slice(0, 10);
@@ -532,18 +553,18 @@ if (bdayCh) {
     color: COLOR,
     title: "🎂 Birthdays",
     description: [
-      "✍️ **Add yours:** post your birthday here, like `10/22` or `Oct 22`. Month and day only.",
-      "🎂 The bot reacts when it got it. Post again to change it.",
-      "🎉 On the day you get a shout-out in " + (genCh ? "<#" + genCh + ">" : "#general") + ".",
+      "✍️ **Add yours:** use `/birthday set`, or post it here like `10/22` or `Oct 22`. Add a year only if you want your age in the shout-out.",
+      "🎂 The bot reacts when it got a post. `/birthday remove` takes yours off.",
+      "🎉 On the day you get a shout-out in " + (genCh ? "<#" + genCh + ">" : "#general") + " and the Birthday role.",
       "",
       "**Coming up**",
-      soon.length ? soon.map(([id, d]) => MONTHS[+d.slice(0, 2) - 1][0].toUpperCase() + MONTHS[+d.slice(0, 2) - 1].slice(1) + " " + +d.slice(3) + " · <@" + id + ">").join("\n") : "No birthdays yet. Add yours!",
+      soon.length ? soon.map(([id, d]) => dayName(d) + " · <@" + id + ">").join("\n") : "No birthdays yet. Add yours!",
     ].join("\n"),
-    footer: { text: "DRC Bot · updates every 2 minutes" },
+    footer: { text: "DRC Bot" },
   });
 }
 
-const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym, levels, bdays, rr };
+const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym, levels, bdays, byear, rr };
 const { updated: _, ...was } = prev;
 if (fs.existsSync("state.enc") && JSON.stringify(was) === JSON.stringify(next)) {
   console.log("no change");
