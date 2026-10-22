@@ -339,8 +339,141 @@ if (liveCh && process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET) 
   }
 }
 
-const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym };
-if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {}, wins: prev.wins || {}, gym: prev.gym || {} }) === JSON.stringify(next)) {
+// Levels, MEE6 style: 15-25 XP per message, at most once a minute per person.
+// Starts from the MEE6 snapshot. History is not counted, only messages after the
+// first run. Level-ups go to #level-ups; Regular at 5, Veteran at 15.
+const REWARDS = { 5: "Regular", 15: "Veteran" };
+const need = l => 5 * l * l + 50 * l + 100;
+function levelOf(xp) { let l = 0; while (xp >= need(l)) xp -= need(l++); return l; }
+const levels = JSON.parse(JSON.stringify(prev.levels || {}));
+levels.users ||= {};
+levels.last ||= {};
+if (!levels.seeded) {
+  const snap = JSON.parse(fs.readFileSync("mee6-snapshot.json", "utf8"));
+  for (const p of snap.players) {
+    const hits = await api("/guilds/" + GUILD + "/members/search?limit=5&query=" + encodeURIComponent(p.name)).catch(() => []);
+    const m = hits.find(h => h.user.username === p.name);
+    if (m) levels.users[m.user.id] = { xp: p.xp, msgs: p.messages, at: 0 };
+    else console.warn("::warning::MEE6 member not found: " + p.name);
+  }
+  levels.seeded = true;
+}
+const lvCh = chan("level-ups");
+let guildRoles = null;
+for (const c of guildChannels.filter(c => c.type === 0)) {
+  const after = levels.last[c.id];
+  const msgs = await api("/channels/" + c.id + "/messages?limit=100" + (after ? "&after=" + after : "")).catch(() => []);
+  if (!msgs.length) continue;
+  levels.last[c.id] = msgs[0].id;
+  // First sight of a channel only marks where to start.
+  if (!after) continue;
+  for (const m of msgs.reverse()) {
+    if (m.author.bot || m.webhook_id) continue;
+    const u = levels.users[m.author.id] ||= { xp: 0, msgs: 0, at: 0 };
+    const t = Date.parse(m.timestamp);
+    u.msgs++;
+    if (t - u.at < 60000) continue;
+    const before = levelOf(u.xp);
+    u.xp += 15 + Math.floor(Math.random() * 11);
+    u.at = t;
+    const now = levelOf(u.xp);
+    if (now <= before) continue;
+    if (lvCh) await api("/channels/" + lvCh + "/messages", "POST", {
+      content: "🎉 <@" + m.author.id + "> reached **level " + now + "**!",
+      allowed_mentions: { users: [m.author.id] },
+    }).catch(e => console.warn("::warning::Couldn't post level-up: " + e.message));
+    for (const [lvl, name] of Object.entries(REWARDS)) {
+      if (now < +lvl || before >= +lvl) continue;
+      guildRoles ||= await api("/guilds/" + GUILD + "/roles").catch(() => []);
+      const role = guildRoles.find(r => r.name === name);
+      if (role) await api("/guilds/" + GUILD + "/members/" + m.author.id + "/roles/" + role.id, "PUT")
+        .catch(e => console.warn("::warning::Couldn't give " + name + ": " + e.message));
+    }
+  }
+}
+
+// Welcome: answer Discord's own "joined the server" message with a short card.
+const guild = await api("/guilds/" + GUILD).catch(() => null);
+const sysCh = guild?.system_channel_id;
+if (sysCh) {
+  const msgs = await api("/channels/" + sysCh + "/messages?limit=50" + (posted.welcome ? "&after=" + posted.welcome : "")).catch(() => []);
+  // Newest first; the first look only marks where to start.
+  const newest = msgs[0]?.id;
+  if (msgs.length && posted.welcome) {
+    const link = part => chan(part) ? "<#" + chan(part) + ">" : "#" + part;
+    for (const m of msgs.reverse()) {
+      if (m.type !== 7) continue;
+      await api("/channels/" + sysCh + "/messages", "POST", {
+        content: "<@" + m.author.id + ">",
+        allowed_mentions: { users: [m.author.id] },
+        message_reference: { message_id: m.id, fail_if_not_exists: false },
+        embeds: [{
+          color: COLOR,
+          title: "👋 Welcome to EverythingDRC!",
+          description: "Glad you're here.\n\n📜 Read " + link("rules") + "\n🔴 Get pinged when Dennis is live in " + link("live-alerts") + "\n🎡 Vote on the wheel in " + link("food-suggestions") + " and " + link("game-suggestions") + "\n💬 Say hi in " + link("general"),
+          thumbnail: m.author.avatar ? { url: "https://cdn.discordapp.com/avatars/" + m.author.id + "/" + m.author.avatar + ".png" } : undefined,
+        }],
+      }).catch(e => console.warn("::warning::Couldn't welcome: " + e.message));
+    }
+  }
+  if (newest) posted.welcome = newest;
+}
+
+// Birthdays: post your date in #birthdays. Only month and day are kept. The bot
+// reacts 🎂 when it understood, and wishes you happy birthday in #general.
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function parseDay(text) {
+  let mo, d;
+  const num = text.match(/\b(\d{1,2})[\/.-](\d{1,2})\b/);
+  const word = text.toLowerCase().match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/);
+  if (num) [mo, d] = [+num[1], +num[2]];
+  else if (word) [mo, d] = [MONTHS.indexOf(word[1]) + 1, +word[2]];
+  else return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(2024, mo, 0).getDate()) return null;
+  return String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
+const bdays = { ...(prev.bdays || {}) };
+const bdayCh = chan("birthdays");
+if (bdayCh) {
+  const msgs = await api("/channels/" + bdayCh + "/messages?limit=100").catch(() => []);
+  // Oldest first so a newer post replaces an older one.
+  for (const m of msgs.reverse()) {
+    if (m.author.bot) continue;
+    const day = parseDay(m.content);
+    if (!day) continue;
+    bdays[m.author.id] = day;
+    if (!m.reactions?.some(r => r.me)) await api("/channels/" + bdayCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent("🎂") + "/@me", "PUT").catch(() => null);
+  }
+  const today = String(etNow.getMonth() + 1).padStart(2, "0") + "-" + String(etNow.getDate()).padStart(2, "0");
+  const genCh = chan("general");
+  posted.bday ||= {};
+  for (const [id, day] of Object.entries(bdays)) {
+    if (day !== today || posted.bday[id] === etNow.getFullYear() || etNow.getHours() < 9 || !genCh) continue;
+    await api("/channels/" + genCh + "/messages", "POST", {
+      content: "🎂 Happy birthday <@" + id + ">!",
+      allowed_mentions: { users: [id] },
+    }).catch(e => console.warn("::warning::Couldn't post birthday: " + e.message));
+    posted.bday[id] = etNow.getFullYear();
+  }
+  const key = d => (d < today ? "1" : "0") + d;
+  const soon = Object.entries(bdays).sort((a, b) => key(a[1]).localeCompare(key(b[1]))).slice(0, 10);
+  await keep("bday_card", bdayCh, {
+    color: COLOR,
+    title: "🎂 Birthdays",
+    description: [
+      "✍️ **Add yours:** post your birthday here, like `10/22` or `Oct 22`. Month and day only.",
+      "🎂 The bot reacts when it got it. Post again to change it.",
+      "🎉 On the day you get a shout-out in " + (genCh ? "<#" + genCh + ">" : "#general") + ".",
+      "",
+      "**Coming up**",
+      soon.length ? soon.map(([id, d]) => MONTHS[+d.slice(0, 2) - 1][0].toUpperCase() + MONTHS[+d.slice(0, 2) - 1].slice(1) + " " + +d.slice(3) + " · <@" + id + ">").join("\n") : "No birthdays yet. Add yours!",
+    ].join("\n"),
+    footer: { text: "Wheel Sync · updates every 2 minutes" },
+  });
+}
+
+const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym, levels, bdays };
+if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {}, wins: prev.wins || {}, gym: prev.gym || {}, levels: prev.levels, bdays: prev.bdays || {} }) === JSON.stringify(next)) {
   console.log("no change");
 } else {
   fs.writeFileSync("data.json", JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1) + "\n");
