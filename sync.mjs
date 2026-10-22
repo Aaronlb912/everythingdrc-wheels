@@ -358,7 +358,7 @@ if (liveCh && process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET) 
 }
 
 // Levels, MEE6 style: 15-25 XP per message, at most once a minute per person.
-// Starts from the MEE6 snapshot. History is not counted, only messages after the
+// MEE6 XP was carried over once (Oct 2026). History is not counted, only messages after the
 // first run. Level-ups go to #level-ups; Regular at 5, Veteran at 15.
 const REWARDS = { 5: "Regular", 15: "Veteran" };
 const need = l => 5 * l * l + 50 * l + 100;
@@ -368,16 +368,6 @@ levels.users ||= {};
 levels.last ||= {};
 const noxp = levels.noxp || { channels: [], roles: [] };
 const rolesOf = {};
-if (!levels.seeded) {
-  const snap = JSON.parse(fs.readFileSync("mee6-snapshot.json", "utf8"));
-  for (const p of snap.players) {
-    const hits = await api("/guilds/" + GUILD + "/members/search?limit=5&query=" + encodeURIComponent(p.name)).catch(() => []);
-    const m = hits.find(h => h.user.username === p.name);
-    if (m) levels.users[m.user.id] = { xp: p.xp, msgs: p.messages, at: 0 };
-    else console.warn("::warning::MEE6 member not found: " + p.name);
-  }
-  levels.seeded = true;
-}
 const lvCh = chan("level-ups");
 let guildRoles = null;
 for (const c of guildChannels.filter(c => c.type === 0)) {
