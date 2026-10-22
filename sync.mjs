@@ -153,7 +153,7 @@ function cardEmbed(cat) {
       "",
       "Resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 2 minutes" },
+    footer: { text: "DRC Bot · updates every 2 minutes" },
   };
 }
 // When chat pushes the card more than BURY messages up, repost it at the bottom.
@@ -301,7 +301,7 @@ if (gymCh) {
       "",
       "✅ = checked in this week. Week resets <t:" + resetAt + ":R>",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 2 minutes" },
+    footer: { text: "DRC Bot · updates every 2 minutes" },
   });
 }
 
@@ -468,7 +468,7 @@ if (bdayCh) {
       "**Coming up**",
       soon.length ? soon.map(([id, d]) => MONTHS[+d.slice(0, 2) - 1][0].toUpperCase() + MONTHS[+d.slice(0, 2) - 1].slice(1) + " " + +d.slice(3) + " · <@" + id + ">").join("\n") : "No birthdays yet. Add yours!",
     ].join("\n"),
-    footer: { text: "Wheel Sync · updates every 2 minutes" },
+    footer: { text: "DRC Bot · updates every 2 minutes" },
   });
 }
 
