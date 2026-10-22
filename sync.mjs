@@ -416,6 +416,17 @@ for (const c of guildChannels.filter(c => c.type === 0)) {
     }
   }
 }
+// After /xp, bring level roles in line with the new level, up or down.
+for (const [id, u] of Object.entries(levels.users)) {
+  if (!u.fix) continue;
+  delete u.fix;
+  guildRoles ||= await api("/guilds/" + GUILD + "/roles").catch(() => []);
+  for (const [lvl, name] of Object.entries(REWARDS)) {
+    const role = guildRoles.find(r => r.name === name);
+    if (role) await api("/guilds/" + GUILD + "/members/" + id + "/roles/" + role.id, levelOf(u.xp) >= +lvl ? "PUT" : "DELETE")
+      .catch(e => console.warn("::warning::Couldn't update " + name + ": " + e.message));
+  }
+}
 
 if (lvCh) {
   const top = Object.entries(levels.users).sort((a, b) => b[1].xp - a[1].xp).slice(0, 10);

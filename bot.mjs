@@ -84,6 +84,7 @@ const amount = { type: 4, name: "amount", description: "How much XP", required: 
 const COMMANDS = [
   { name: "rank", description: "Show your level and XP", options: [{ type: 6, name: "member", description: "Someone else's rank" }] },
   { name: "leaderboard", description: "Top 10 by XP" },
+  { name: "help", description: "What DRC Bot can do" },
   { name: "xp", description: "Change someone's XP", default_member_permissions: "32", options: [
     { type: 1, name: "add", description: "Give XP", options: [member, amount] },
     { type: 1, name: "remove", description: "Take XP away", options: [member, amount] },
@@ -129,6 +130,16 @@ async function answer(i) {
       const path = "/webhooks/" + i.application_id + "/" + i.token + "/messages/@original";
       return api(path, "PATCH", card ? form({ allowed_mentions: { parse: [] } }, "rank.png", card) : { content: text, allowed_mentions: { parse: [] } });
     }
+  } else if (name === "help") {
+    return callback(i, { type: 4, data: { flags: 64, content: [
+      "**DRC Bot**",
+      "`/rank` your level card. Add a member to see theirs.",
+      "`/leaderboard` top 10 by XP. You earn XP by chatting, once a minute.",
+      "`/birthday set` get a shout-out and the Birthday role on your day. `/birthday next` shows who's coming up.",
+      "Pick roles by reacting in #roles. Suggest food and games in the suggestion channels; reactions are votes for the wheel.",
+      "",
+      "**Mods** (Manage Server): `/xp` add, remove, set or reset XP. `/noxp` turn XP off for a channel or role.",
+    ].join("\n") } });
   } else if (name === "noxp") {
     const n = s.levels?.noxp || { channels: [], roles: [] };
     content = n.channels.length || n.roles.length
@@ -156,7 +167,8 @@ function change(s, name, sub, opt, self, resolved) {
     s.levels ||= {}; s.levels.users ||= {};
     const u = s.levels.users[id] ||= { xp: 0, msgs: 0, at: 0 };
     u.xp = Math.max(0, sub === "add" ? u.xp + n : sub === "remove" ? u.xp - n : sub === "set" ? n : 0);
-    return "<@" + id + "> now has " + u.xp + " XP (level " + progress(u.xp).level + "). Level roles only change at their next level-up.";
+    u.fix = true;
+    return "<@" + id + "> now has " + u.xp + " XP (level " + progress(u.xp).level + "). Level roles update in a few seconds.";
   }
   if (name === "noxp") {
     s.levels ||= {};
