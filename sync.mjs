@@ -2,6 +2,21 @@
 // A suggestion is one message; its votes are the people who reacted to it, with any emoji.
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1); }
+// XP, birthdays, streaks and role picks are kept in state.enc, encrypted with this
+// key, because the repo is public. data.json only holds what the wheel page shows.
+const crypto = await import("node:crypto");
+const KEY = Buffer.from(process.env.STATE_KEY || "", "base64");
+if (KEY.length !== 32) { console.error("STATE_KEY secret is missing or not 32 bytes"); process.exit(1); }
+function seal(obj) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", KEY, iv);
+  const body = Buffer.concat([c.update(JSON.stringify(obj)), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), body]).toString("base64") + "\n";
+}
+function unseal(text) {
+  const b = Buffer.from(text, "base64"), d = crypto.createDecipheriv("aes-256-gcm", KEY, b.subarray(0, 12));
+  d.setAuthTag(b.subarray(12, 28));
+  return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString());
+}
 
 // Add a channel ID here to make that tab fill on its own. null = paste only.
 const CHANNELS = {
@@ -96,7 +111,9 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
 
 const fs = await import("node:fs");
 let prev = {};
-try { prev = JSON.parse(fs.readFileSync("data.json", "utf8")); } catch {}
+// A state.enc that won't open stops the run instead of starting over from nothing.
+if (fs.existsSync("state.enc")) prev = unseal(fs.readFileSync("state.enc", "utf8"));
+else try { prev = JSON.parse(fs.readFileSync("data.json", "utf8")); } catch {}
 
 // The bot keeps one card per channel, edited in place: short how-to on top,
 // this week's list with jump links below. Pin it once in Discord.
@@ -379,7 +396,7 @@ for (const c of guildChannels.filter(c => c.type === 0)) {
     const now = levelOf(u.xp);
     if (now <= before) continue;
     if (lvCh) await api("/channels/" + lvCh + "/messages", "POST", {
-      content: "🎉 <@" + m.author.id + "> reached **level " + now + "**!",
+      content: "GG <@" + m.author.id + ">, you just advanced to level " + now + "!",
       allowed_mentions: { users: [m.author.id] },
     }).catch(e => console.warn("::warning::Couldn't post level-up: " + e.message));
     for (const [lvl, name] of Object.entries(REWARDS)) {
@@ -392,8 +409,62 @@ for (const c of guildChannels.filter(c => c.type === 0)) {
   }
 }
 
+if (lvCh) {
+  const top = Object.entries(levels.users).sort((a, b) => b[1].xp - a[1].xp).slice(0, 10);
+  await keep("lv_card", lvCh, {
+    color: COLOR,
+    title: "⬆️ Leaderboard",
+    description: [
+      "💬 **Earn XP:** chat anywhere. One message a minute counts.",
+      "🏅 **Rewards:** Regular at level 5, Veteran at level 15",
+      "",
+      top.length ? top.map(([id, u], i) => (i + 1) + ". <@" + id + "> · level " + levelOf(u.xp) + " · " + u.xp + " XP").join("\n") : "No XP yet. Say something!",
+    ].join("\n"),
+    footer: { text: "DRC Bot · updates every 2 minutes" },
+  });
+}
+
+// Reaction roles in #roles: react to get a role, remove the reaction to drop it.
+// Only roles given here are taken back here; onboarding roles are left alone.
+const RR = [
+  ["🙌", "Viewer", "you watch the streams"],
+  ["🍕", "Food Critic", "you post food reviews"],
+  ["🏋️", "Gym Rat", "gym pings and challenges"],
+  ["🕹️", "Collector", "game collection talk"],
+  ["🎮", "Gamer", "game nights and game of the week"],
+  ["🎵", "Music Fan", "song of the week"],
+];
+let rr = JSON.parse(JSON.stringify(prev.rr || {}));
+const rolesCh = chan("roles");
+if (rolesCh) {
+  await keep("rr_card", rolesCh, {
+    color: COLOR,
+    title: "🎭 Pick your roles",
+    description: "React to get a role. Remove your reaction to drop it.\n\n" + RR.map(([e, n, what]) => e + " **" + n + ":** " + what).join("\n"),
+  });
+  const id = boards.rr_card?.id;
+  // A new card starts with no reactions; don't read that as everyone leaving.
+  if (id && rr.msg !== id) rr = { msg: id };
+  if (id) {
+    guildRoles ||= await api("/guilds/" + GUILD + "/roles").catch(() => []);
+    for (const [e, name] of RR) {
+      const role = guildRoles.find(r => r.name === name);
+      const path = "/channels/" + rolesCh + "/messages/" + id + "/reactions/" + encodeURIComponent(e);
+      const users = role && await api(path + "?limit=100").catch(() => null);
+      if (!users) continue;
+      if (!users.some(u => u.id === me.id)) await api(path + "/@me", "PUT").catch(() => null);
+      const now = users.filter(u => !u.bot).map(u => u.id), was = rr[name] || [];
+      for (const u of now) if (!was.includes(u))
+        await api("/guilds/" + GUILD + "/members/" + u + "/roles/" + role.id, "PUT").catch(err => console.warn("::warning::Couldn't give " + name + ": " + err.message));
+      for (const u of was) if (!now.includes(u))
+        await api("/guilds/" + GUILD + "/members/" + u + "/roles/" + role.id, "DELETE").catch(err => console.warn("::warning::Couldn't remove " + name + ": " + err.message));
+      rr[name] = now;
+    }
+  }
+}
+
 // Welcome: answer Discord's own "joined the server" message with a short card.
-const guild = await api("/guilds/" + GUILD).catch(() => null);
+const guild = await api("/guilds/" + GUILD + "?with_counts=true").catch(() => null);
 const sysCh = guild?.system_channel_id;
 if (sysCh) {
   const msgs = await api("/channels/" + sysCh + "/messages?limit=50" + (posted.welcome ? "&after=" + posted.welcome : "")).catch(() => []);
@@ -404,13 +475,13 @@ if (sysCh) {
     for (const m of msgs.reverse()) {
       if (m.type !== 7) continue;
       await api("/channels/" + sysCh + "/messages", "POST", {
-        content: "<@" + m.author.id + ">",
+        content: "Hey <@" + m.author.id + ">, welcome to **EverythingDRC**! Grab your roles in " + link("roles") + ", check " + link("schedule") + " for stream times. Come say hi in " + link("general") + "! 👋",
         allowed_mentions: { users: [m.author.id] },
         message_reference: { message_id: m.id, fail_if_not_exists: false },
         embeds: [{
           color: COLOR,
-          title: "👋 Welcome to EverythingDRC!",
-          description: "Glad you're here.\n\n📜 Read " + link("rules") + "\n🔴 Get pinged when Dennis is live in " + link("live-alerts") + "\n🎡 Vote on the wheel in " + link("food-suggestions") + " and " + link("game-suggestions") + "\n💬 Say hi in " + link("general"),
+          title: (m.author.global_name || m.author.username) + " just joined the server",
+          description: guild.approximate_member_count ? "Member #" + guild.approximate_member_count : undefined,
           thumbnail: m.author.avatar ? { url: "https://cdn.discordapp.com/avatars/" + m.author.id + "/" + m.author.avatar + ".png" } : undefined,
         }],
       }).catch(e => console.warn("::warning::Couldn't welcome: " + e.message));
@@ -472,10 +543,13 @@ if (bdayCh) {
   });
 }
 
-const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym, levels, bdays };
-if (JSON.stringify({ weekStart: prev.weekStart, lists: prev.lists, boards: prev.boards, posted: prev.posted || {}, wins: prev.wins || {}, gym: prev.gym || {}, levels: prev.levels, bdays: prev.bdays || {} }) === JSON.stringify(next)) {
+const next = { weekStart: since.toISOString(), lists, boards, posted, wins, gym, levels, bdays, rr };
+const { updated: _, ...was } = prev;
+if (fs.existsSync("state.enc") && JSON.stringify(was) === JSON.stringify(next)) {
   console.log("no change");
 } else {
-  fs.writeFileSync("data.json", JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1) + "\n");
+  const updated = new Date().toISOString();
+  fs.writeFileSync("state.enc", seal({ ...next, updated }));
+  fs.writeFileSync("data.json", JSON.stringify({ weekStart: next.weekStart, lists, updated }, null, 1) + "\n");
   console.log("updated", Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, v.length])));
 }

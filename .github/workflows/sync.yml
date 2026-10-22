@@ -26,8 +26,8 @@ jobs:
           for i in $(seq 25); do
             git pull -q --rebase || true
             node sync.mjs || true
-            if [ -n "$(git status --porcelain data.json)" ]; then
-              git add data.json
+            if [ -n "$(git status --porcelain data.json state.enc)" ]; then
+              git add data.json state.enc
               git commit -qm "sync wheel entries"
               git pull -q --rebase && git push -q || true
             fi
@@ -37,6 +37,7 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
       - if: success() || failure()
         run: gh workflow run sync.yml --ref main
         env:
