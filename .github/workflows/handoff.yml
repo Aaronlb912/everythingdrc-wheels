@@ -1,0 +1,24 @@
+name: Hand secrets to the bot server
+# One-off. Encrypts the bot secrets to the server's public key, so only the
+# server can read the output. Deleted after use.
+on:
+  workflow_dispatch:
+    inputs:
+      pub:
+        description: base64 public key
+        required: true
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "$PUB" | base64 -d > pub.pem
+          printf 'DISCORD_TOKEN=%s\nTWITCH_CLIENT_ID=%s\nTWITCH_CLIENT_SECRET=%s\nSTATE_KEY=%s\n' "$A" "$B" "$C" "$D" \
+            | openssl pkeyutl -encrypt -pubin -inkey pub.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            | base64 -w0 | sed 's/^/SEALED:/'; echo
+        env:
+          PUB: ${{ inputs.pub }}
+          A: ${{ secrets.DISCORD_TOKEN }}
+          B: ${{ secrets.TWITCH_CLIENT_ID }}
+          C: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          D: ${{ secrets.STATE_KEY }}
