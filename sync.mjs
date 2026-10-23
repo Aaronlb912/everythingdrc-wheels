@@ -475,6 +475,8 @@ if (rolesCh) {
 // Welcome: answer Discord's own "joined the server" message with a short card.
 const guild = await api("/guilds/" + GUILD + "?with_counts=true").catch(() => null);
 const sysCh = guild?.system_channel_id;
+// Discord posts its join notice in the system channel; the welcome goes to #welcome.
+const welcomeCh = chan("welcome") || sysCh;
 if (sysCh) {
   const msgs = await api("/channels/" + sysCh + "/messages?limit=50" + (posted.welcome ? "&after=" + posted.welcome : "")).catch(() => []);
   // Newest first; the first look only marks where to start.
@@ -487,7 +489,7 @@ if (sysCh) {
       const msg = {
         content: "Hey <@" + m.author.id + ">, welcome to **EverythingDRC**! Grab your roles in " + link("roles") + ", check " + link("schedule") + " for stream times. Come say hi in " + link("general") + "! 👋",
         allowed_mentions: { users: [m.author.id] },
-        message_reference: { message_id: m.id, fail_if_not_exists: false },
+        message_reference: welcomeCh === sysCh ? { message_id: m.id, fail_if_not_exists: false } : undefined,
         embeds: [{
           color: COLOR,
           title: (m.author.global_name || m.author.username) + " just joined the server",
@@ -496,7 +498,7 @@ if (sysCh) {
         }],
       };
       if (card) msg.embeds = [{ color: COLOR, image: { url: "attachment://welcome.png" } }];
-      await api("/channels/" + sysCh + "/messages", "POST", card ? form(msg, "welcome.png", card) : msg)
+      await api("/channels/" + welcomeCh + "/messages", "POST", card ? form(msg, "welcome.png", card) : msg)
         .catch(e => console.warn("::warning::Couldn't welcome: " + e.message));
     }
   }
