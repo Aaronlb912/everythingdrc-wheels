@@ -84,7 +84,7 @@ async function channelEntries(id, since) {
         const users = await api(`/channels/${id}/messages/${m.id}/reactions/${e}?limit=100`).catch(() => []);
         for (const u of users) if (!u.bot) reactors.add(u.id);
       }
-      raw.push({ name, author: m.author.bot ? null : m.author.id, reactors, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
+      raw.push({ name, ch: id, id: m.id, author: m.author.bot ? null : m.author.id, reactors, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
     }
     before = "&before=" + msgs[msgs.length - 1].id;
   }
@@ -94,10 +94,14 @@ async function channelEntries(id, since) {
 // One per person per week: your first suggestion (which is your vote) or one
 // vote. Later suggestions are dropped, and a suggester's reactions don't count.
 // Reactions have no time, so someone who reacts to several counts on the oldest.
+const extras = [];
 function oneEach(raw) {
   raw.reverse();
   const suggesters = new Set(), counted = new Set();
-  const kept = raw.filter(e => !e.author || (!suggesters.has(e.author) && suggesters.add(e.author)));
+  const kept = raw.filter(e => {
+    if (!e.author || !suggesters.has(e.author)) return !e.author || suggesters.add(e.author);
+    extras.push(e);
+  });
   for (const e of kept) if (e.author) counted.add(e.author);
   return kept.map(e => {
     let n = e.author ? 1 : 0;
@@ -250,6 +254,17 @@ if (flipped && posted.reset !== wk) {
     await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
   posted.reset = wk;
 }
+// Tell people once when a post won't count. Only this week's posts are kept.
+const told = new Set(posted.extra || []);
+for (const e of extras) if (!told.has(e.id)) {
+  await api("/channels/" + e.ch + "/messages", "POST", {
+    content: "You already have a suggestion this week, so this one won't count. Only your first one does.",
+    message_reference: { message_id: e.id, fail_if_not_exists: false },
+    allowed_mentions: { parse: [], replied_user: false },
+  }).catch(err => console.warn("::warning::Couldn't reply to extra: " + err.message));
+  told.add(e.id);
+}
+posted.extra = extras.map(e => e.id).filter(id => told.has(id));
 if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCallTue !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
