@@ -64,13 +64,13 @@ function entryName(m) {
 const me = await api("/users/@me");
 
 async function channelEntries(id, since) {
-  const out = [];
+  const raw = [];
   let before = "";
   for (let page = 0; page < 10; page++) {
     const msgs = await api(`/channels/${id}/messages?limit=100${before}`);
     if (!msgs.length) break;
     for (const m of msgs) {
-      if (new Date(m.timestamp) < since) return out;
+      if (new Date(m.timestamp) < since) return oneEach(raw);
       // Pinned posts are the how-to and the weekly list, not suggestions.
       if (m.pinned) continue;
       const name = entryName(m);
@@ -78,19 +78,32 @@ async function channelEntries(id, since) {
       // Our own posts are nudges. Other bot posts without reactions are setup or
       // system messages; Carl-bot suggestions always carry its own reaction.
       if (m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
-      // Each person counts once however many emojis they add. Bots don't count.
-      // Suggesting counts as your vote.
-      const voters = new Set(m.author.bot ? [] : [m.author.id]);
+      const reactors = new Set();
       for (const r of m.reactions || []) {
         const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
         const users = await api(`/channels/${id}/messages/${m.id}/reactions/${e}?limit=100`).catch(() => []);
-        for (const u of users) if (!u.bot) voters.add(u.id);
+        for (const u of users) if (!u.bot) reactors.add(u.id);
       }
-      out.push([name, voters.size, `https://discord.com/channels/${GUILD}/${id}/${m.id}`]);
+      raw.push({ name, author: m.author.bot ? null : m.author.id, reactors, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
     }
     before = "&before=" + msgs[msgs.length - 1].id;
   }
-  return out;
+  return oneEach(raw);
+}
+
+// One per person per week: your first suggestion (which is your vote) or one
+// vote. Later suggestions are dropped, and a suggester's reactions don't count.
+// Reactions have no time, so someone who reacts to several counts on the oldest.
+function oneEach(raw) {
+  raw.reverse();
+  const suggesters = new Set(), counted = new Set();
+  const kept = raw.filter(e => !e.author || (!suggesters.has(e.author) && suggesters.add(e.author)));
+  for (const e of kept) if (e.author) counted.add(e.author);
+  return kept.map(e => {
+    let n = e.author ? 1 : 0;
+    for (const u of e.reactors) if (!suggesters.has(u) && !counted.has(u)) { counted.add(u); n++; }
+    return [e.name, n, e.link];
+  });
 }
 
 const since = weekStart();
@@ -161,8 +174,9 @@ function cardEmbed(cat) {
     color: COLOR,
     title: l.emoji + " " + l.title + " wheel",
     description: [
+      "☝️ **One each week:** suggest one or vote for one, not both",
       "👍 **Vote:** tap a name below and react with any emoji",
-      "✍️ **Suggest:** type a " + l.noun + " in this channel, one per message",
+      "✍️ **Suggest:** type a " + l.noun + " in this channel. It counts as your vote",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
       ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
