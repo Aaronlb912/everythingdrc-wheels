@@ -250,13 +250,13 @@ if (flipped && posted.reset !== wk) {
     await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
   posted.reset = wk;
 }
-if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCall !== wk) {
+if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCallTue !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
     const top = lists[cat].slice(0, 3).map(([n, v, link], i) => ["🥇", "🥈", "🥉"][i] + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
     await say(id, { title: "⏰ Last call for " + LABELS[cat].noun + " votes", description: (top || "Nothing suggested yet. There's still time!") + "\n\nThe wheel spins soon. React to your favorite with any emoji." });
   }
-  posted.lastCall = wk;
+  posted.lastCallTue = wk;
 }
 // Winner history: when the week flips, post last week's most voted and an all-time tally.
 const wins = JSON.parse(JSON.stringify(prev.wins || {}));
