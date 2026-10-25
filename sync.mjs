@@ -228,7 +228,8 @@ for (const [cat, id] of Object.entries(PLAIN)) {
     description: "Got a " + LABELS[cat].noun + " Dennis should check out? Post it here. React to the ones you like.",
   });
 }
-// One post per channel when the week flips, and a last call on Saturday (ET).
+// One post per channel when the week flips, and a last call Tuesday noon (ET),
+// nine hours before the reset.
 const posted = { ...(prev.posted || {}) }, wk = since.toISOString();
 // A week start less than 6 days after the last one is the schedule change, not a
 // new week: carry this week's posts over instead of announcing a reset.
@@ -249,7 +250,7 @@ if (flipped && posted.reset !== wk) {
     await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
   posted.reset = wk;
 }
-if (etDay === 6 && posted.lastCall !== wk) {
+if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCall !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
     const top = lists[cat].slice(0, 3).map(([n, v, link], i) => ["🥇", "🥈", "🥉"][i] + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
