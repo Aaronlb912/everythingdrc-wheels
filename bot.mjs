@@ -45,13 +45,16 @@ const reply = (i, content) => api("/webhooks/" + i.application_id + "/" + i.toke
 
 // Sync runs one at a time. kick() asks for a run soon; the timer covers the
 // wheel and Twitch when nothing is happening.
-let running = false, again = false, timer = null;
+let running = false, again = false, timer = null, due = Infinity;
 function kick(ms = 3000) {
+  if (Date.now() + ms >= due) return;
   clearTimeout(timer);
+  due = Date.now() + ms;
   timer = setTimeout(run, ms);
 }
 async function run() {
   clearTimeout(timer);
+  due = Infinity;
   if (running) { again = true; return; }
   running = true;
   try {

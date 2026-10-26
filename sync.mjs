@@ -31,14 +31,17 @@ const GUILD = "1533847576619520082";
 
 // Week starts Tuesday 9 PM US Eastern.
 const RESET_HOUR = 21;
+const toET = d => new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
 function weekStart(now = new Date()) {
-  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-  const offset = now - et;
+  const et = toET(now);
   et.setHours(et.getHours() - RESET_HOUR, 0, 0, 0);
   et.setHours(0, 0, 0, 0);
   et.setDate(et.getDate() - ((et.getDay() + 5) % 7));
   et.setHours(RESET_HOUR);
-  return new Date(Math.round((et.getTime() + offset) / 60000) * 60000);
+  // Today's offset can be wrong for that Tuesday across a DST change; correct it there.
+  let t = et.getTime() + (now - toET(now));
+  t += et - toET(new Date(t));
+  return new Date(Math.round(t / 60000) * 60000);
 }
 
 async function api(path, method = "GET", body) {
@@ -62,6 +65,20 @@ function entryName(m) {
 }
 
 const me = await api("/users/@me");
+async function reactors(path) {
+  const out = [];
+  for (let after = ""; ;) {
+    const page = await api(path + "?limit=100" + after);
+    out.push(...page);
+    if (page.length < 100) return out;
+    after = "&after=" + page[page.length - 1].id;
+  }
+}
+// Carl-bot posts suggestions for people; the person is in the embed's author.
+function carlAuthor(m) {
+  const a = m.embeds?.[0]?.author;
+  return a?.icon_url?.match(/avatars\/(\d+)\//)?.[1] || (a?.name ? "name:" + a.name.toLowerCase() : null);
+}
 
 async function channelEntries(id, since) {
   const raw = [];
@@ -78,13 +95,16 @@ async function channelEntries(id, since) {
       // Our own posts are nudges. Other bot posts without reactions are setup or
       // system messages; Carl-bot suggestions always carry its own reaction.
       if (m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
-      const reactors = new Set();
+      const who = new Set();
       for (const r of m.reactions || []) {
         const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
-        const users = await api(`/channels/${id}/messages/${m.id}/reactions/${e}?limit=100`).catch(() => []);
-        for (const u of users) if (!u.bot) reactors.add(u.id);
+        const users = await reactors(`/channels/${id}/messages/${m.id}/reactions/${e}`).catch(err => (console.warn("::warning::Couldn't read votes: " + err.message), []));
+        for (const u of users) if (!u.bot) who.add(u.id);
       }
-      raw.push({ name, ch: id, id: m.id, author: m.author.bot ? null : m.author.id, reactors, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
+      // A bot suggestion with no person behind it can't be held to one each.
+      const author = m.author.bot ? carlAuthor(m) : m.author.id;
+      if (!author) continue;
+      raw.push({ name, ch: id, id: m.id, author, reactors: who, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
     }
     before = "&before=" + msgs[msgs.length - 1].id;
   }
@@ -99,12 +119,12 @@ function oneEach(raw) {
   raw.reverse();
   const suggesters = new Set(), counted = new Set();
   const kept = raw.filter(e => {
-    if (!e.author || !suggesters.has(e.author)) return !e.author || suggesters.add(e.author);
+    if (!suggesters.has(e.author)) return suggesters.add(e.author);
     extras.push(e);
   });
-  for (const e of kept) if (e.author) counted.add(e.author);
+  for (const e of kept) counted.add(e.author);
   return kept.map(e => {
-    let n = e.author ? 1 : 0;
+    let n = 1;
     for (const u of e.reactors) if (!suggesters.has(u) && !counted.has(u)) { counted.add(u); n++; }
     return [e.name, n, e.link];
   });
@@ -179,7 +199,7 @@ function cardEmbed(cat) {
     title: l.emoji + " " + l.title + " wheel",
     description: [
       "☝️ **One each week:** suggest one or vote for one, not both",
-      "👍 **Vote:** tap a name below and react with any emoji",
+      "👍 **Vote:** react to one name below with any emoji. React to more than one and only the oldest counts",
       "✍️ **Suggest:** type a " + l.noun + " in this channel. It counts as your vote",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
@@ -243,6 +263,7 @@ if (moved) for (const [k, v] of Object.entries(posted)) {
   else if (v?.wk === prev.weekStart) posted[k] = { ...v, wk };
 }
 const flipped = prev.weekStart && prev.weekStart !== wk && !moved;
+if (flipped) posted.lastLists = { wk, lists: prev.lists || {} };
 const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
 const etDay = etNow.getDay();
 async function say(channel, embed) {
@@ -256,15 +277,19 @@ if (flipped && posted.reset !== wk) {
 }
 // Tell people once when a post won't count. Only this week's posts are kept.
 const told = new Set(posted.extra || []);
+const toldWho = new Set(posted.extraWho?.wk === wk ? posted.extraWho.ids : []);
 for (const e of extras) if (!told.has(e.id)) {
+  told.add(e.id);
+  if (toldWho.has(e.author)) continue;
+  toldWho.add(e.author);
   await api("/channels/" + e.ch + "/messages", "POST", {
-    content: "You already have a suggestion this week, so this one won't count. Only your first one does.",
+    content: "You already have a suggestion this week, so this one won't count. Only your first one does. I'll only say this once a week.",
     message_reference: { message_id: e.id, fail_if_not_exists: false },
     allowed_mentions: { parse: [], replied_user: false },
   }).catch(err => console.warn("::warning::Couldn't reply to extra: " + err.message));
-  told.add(e.id);
 }
 posted.extra = extras.map(e => e.id).filter(id => told.has(id));
+posted.extraWho = { wk, ids: [...toldWho] };
 if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCallTue !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
@@ -275,17 +300,17 @@ if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && po
 }
 // Winner history: when the week flips, post last week's most voted and an all-time tally.
 const wins = JSON.parse(JSON.stringify(prev.wins || {}));
-if (flipped && posted.winners !== wk && Date.now() - since >= GRACE) {
+if (posted.lastLists?.wk === wk && posted.winners !== wk && Date.now() - since >= GRACE) {
   const lines = [];
   for (const cat of Object.keys(CHANNELS)) {
-    const top = prev.lists?.[cat]?.[0], pick = pickLast[cat];
+    const top = posted.lastLists.lists[cat]?.[0], pick = pickLast[cat];
     if (pick) lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (wheel):** [" + pick.name + "](" + pick.link + ")");
     if (!top) continue;
     const t = wins[cat] ||= {}, k = top[0].toLowerCase();
     t[k] = { name: top[0], n: (t[k]?.n || 0) + 1 };
     lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (most voted):** " + top[0] + " · " + top[1] + " 👍");
   }
-  posted.lastFood = pickLast.food?.name || prev.lists?.food?.[0]?.[0] || null;
+  posted.lastFood = pickLast.food?.name || posted.lastLists.lists.food?.[0]?.[0] || null;
   const allTime = Object.entries(wins).map(([cat, t]) => LABELS[cat].emoji + " " +
     Object.values(t).sort((a, b) => b.n - a.n).slice(0, 3).map(x => x.name + " (" + x.n + ")").join(", ")).join("\n");
   const winCh = chan("wheel-winners");
@@ -297,18 +322,28 @@ if (flipped && posted.winners !== wk && Date.now() - since >= GRACE) {
 const clipCh = chan("fan-clips");
 if (etDay === 0 && clipCh && posted.clip !== wk) {
   const msgs = await api("/channels/" + clipCh + "/messages?limit=100").catch(() => []);
-  const best = msgs.filter(m => !m.author.bot && new Date(m.timestamp) >= since)
-    .map(m => [m, (m.reactions || []).reduce((n, r) => n + r.count, 0)]).sort((a, b) => b[1] - a[1])[0];
-  if (best?.[1]) await say(clipCh, { title: "🎬 Clip of the week", description: "<@" + best[0].author.id + "> with **" + best[1] + "** reactions\n[Watch it](" + msgLink(clipCh, best[0].id) + ")\n\nReact to clips all week. Most reactions wins on Sunday." });
+  const scored = [];
+  for (const m of msgs.filter(m => !m.author.bot && new Date(m.timestamp) >= since && m.reactions?.length)) {
+    const who = new Set();
+    for (const r of m.reactions) {
+      const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
+      for (const u of await reactors("/channels/" + clipCh + "/messages/" + m.id + "/reactions/" + e).catch(() => []))
+        if (!u.bot && u.id !== m.author.id) who.add(u.id);
+    }
+    scored.push([m, who.size]);
+  }
+  const best = scored.sort((a, b) => b[1] - a[1])[0];
+  if (best?.[1]) await say(clipCh, { title: "🎬 Clip of the week", description: "<@" + best[0].author.id + "> with **" + best[1] + "** " + (best[1] === 1 ? "person" : "people") + " reacting\n[Watch it](" + msgLink(clipCh, best[0].id) + ")\n\nReact to clips all week. The clip the most people react to wins on Sunday." });
   posted.clip = wk;
 }
 
 // Food score: after Wednesday's stream, ask for a 1-10 rating; post the average Friday.
 const RATE = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
 const rateCh = chan("general-food-reviews");
-const food = posted.lastFood ? "**" + posted.lastFood + "**" : "this week's food";
+const foodName = pickLast.food?.name || posted.lastFood;
+const food = foodName ? "**" + foodName + "**" : "this week's food";
 if (rateCh && etDay === 3 && etNow.getHours() >= 19 && posted.rate?.wk !== wk) {
-  const m = await api("/channels/" + rateCh + "/messages", "POST", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: "How was " + food + "? Tap a number below, 1 to 10. Score posts Friday." }] })
+  const m = await api("/channels/" + rateCh + "/messages", "POST", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: "How was " + food + "? Tap one number below, 1 to 10. Tap more than one and your vote won't count. Score posts Friday." }] })
     .catch(e => console.warn("::warning::Couldn't post rating: " + e.message));
   if (m) {
     for (const e of RATE) await api("/channels/" + rateCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent(e) + "/@me", "PUT").catch(() => null);
@@ -318,10 +353,14 @@ if (rateCh && etDay === 3 && etNow.getHours() >= 19 && posted.rate?.wk !== wk) {
 if (rateCh && posted.rate?.wk === wk && !posted.rate.done && etDay >= 5) {
   const m = await api("/channels/" + rateCh + "/messages/" + posted.rate.id).catch(() => null);
   let votes = 0, sum = 0;
+  const pickedBy = {};
   for (const r of m?.reactions || []) {
-    const i = RATE.indexOf(r.emoji.name), n = r.count - (r.me ? 1 : 0);
-    if (i >= 0 && n > 0) { votes += n; sum += n * (i + 1); }
+    const i = RATE.indexOf(r.emoji.name);
+    if (i < 0) continue;
+    for (const u of await reactors("/channels/" + rateCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent(r.emoji.name)).catch(() => []))
+      if (!u.bot) (pickedBy[u.id] ||= []).push(i + 1);
   }
+  for (const n of Object.values(pickedBy)) if (n.length === 1) { votes++; sum += n[0]; }
   if (m) await say(rateCh, { title: "⭐ Food score: " + (votes ? (sum / votes).toFixed(1) + "/10" : "no votes"), description: food + " · " + votes + " vote" + (votes === 1 ? "" : "s") + "\n[See the votes](" + msgLink(rateCh, m.id) + ")" });
   posted.rate = { ...posted.rate, done: true };
 }
@@ -367,6 +406,9 @@ if (liveCh && process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET) 
     });
     if (!r.ok) throw new Error("streams " + r.status);
     const stream = (await r.json()).data?.[0];
+    const restart = posted.liveAt && Date.now() - posted.liveAt < 30 * 60000;
+    if (stream && posted.live !== stream.id && restart) posted.live = stream.id;
+    if (stream) posted.liveAt = Date.now();
     if (stream && posted.live !== stream.id) {
       const url = "https://twitch.tv/" + TWITCH_LOGIN;
       await api("/channels/" + liveCh + "/messages", "POST", {
@@ -489,7 +531,7 @@ if (rolesCh) {
     for (const [e, name] of RR) {
       const role = guildRoles.find(r => r.name === name);
       const path = "/channels/" + rolesCh + "/messages/" + id + "/reactions/" + encodeURIComponent(e);
-      const users = role && await api(path + "?limit=100").catch(() => null);
+      const users = role && await reactors(path).catch(() => null);
       if (!users) continue;
       if (!users.some(u => u.id === me.id)) await api(path + "/@me", "PUT").catch(() => null);
       const now = users.filter(u => !u.bot).map(u => u.id), was = rr[name] || [];
@@ -546,9 +588,12 @@ if (bdayCh) {
   // Oldest first so a newer post replaces an older one.
   for (const m of msgs.reverse()) {
     if (m.author.bot) continue;
+    if (m.content.length > 40 && !/birth|bday/i.test(m.content)) continue;
     const day = parseDay(m.content);
     if (!day) continue;
     bdays[m.author.id] = day;
+    const yr = +m.content.match(/\b(19\d\d|20\d\d)\b/)?.[1];
+    if (yr && yr <= etNow.getFullYear()) byear[m.author.id] = yr;
     if (!m.reactions?.some(r => r.me)) await api("/channels/" + bdayCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent("🎂") + "/@me", "PUT").catch(() => null);
   }
   const today = String(etNow.getMonth() + 1).padStart(2, "0") + "-" + String(etNow.getDate()).padStart(2, "0");
