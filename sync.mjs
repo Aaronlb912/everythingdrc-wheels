@@ -1,6 +1,6 @@
 // Reads this week's suggestions from Discord and writes data.json for the wheel.
 // A suggestion is one message; its votes are the people who reacted to it, with any emoji.
-import { parseDay, dayName, welcomeCard, form } from "./lib.mjs";
+import { parseDay, dayName, welcomeCard, form, CHANNELS, RESET_HOUR, toET, weekStart, SUGGEST_FROM, suggester } from "./lib.mjs";
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1); }
 // XP, birthdays, streaks and role picks are kept in state.enc, encrypted with this
@@ -19,30 +19,11 @@ function unseal(text) {
   return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString());
 }
 
-// Add a channel ID here to make that tab fill on its own. null = paste only.
-const CHANNELS = {
-  food: "1562541058288779357",
-  games: "1562529876739760138",
-};
 // Plain suggestion channels: the card becomes a short how-to, no wheel or votes.
 const PLAIN = { music: "1562529917546274817" };
 
 const GUILD = "1533847576619520082";
 
-// Week starts Tuesday 9 PM US Eastern.
-const RESET_HOUR = 21;
-const toET = d => new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
-function weekStart(now = new Date()) {
-  const et = toET(now);
-  et.setHours(et.getHours() - RESET_HOUR, 0, 0, 0);
-  et.setHours(0, 0, 0, 0);
-  et.setDate(et.getDate() - ((et.getDay() + 5) % 7));
-  et.setHours(RESET_HOUR);
-  // Today's offset can be wrong for that Tuesday across a DST change; correct it there.
-  let t = et.getTime() + (now - toET(now));
-  t += et - toET(new Date(t));
-  return new Date(Math.round(t / 60000) * 60000);
-}
 
 async function api(path, method = "GET", body) {
   for (let i = 0; i < 5; i++) {
@@ -94,7 +75,9 @@ async function channelEntries(id, since) {
       if (!name) continue;
       // Our own posts are nudges. Other bot posts without reactions are setup or
       // system messages; Carl-bot suggestions always carry its own reaction.
-      if (m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
+      // From SUGGEST_FROM on, only /suggest posts count, so people can chat here.
+      const via = m.author.id === me.id && suggester(m);
+      if (new Date(m.timestamp) >= SUGGEST_FROM ? !via : m.author.id === me.id || (m.author.bot && !m.reactions?.length)) continue;
       const who = new Set();
       for (const r of m.reactions || []) {
         const e = encodeURIComponent(r.emoji.id ? r.emoji.name + ":" + r.emoji.id : r.emoji.name);
@@ -102,7 +85,7 @@ async function channelEntries(id, since) {
         for (const u of users) if (!u.bot) who.add(u.id);
       }
       // A bot suggestion with no person behind it can't be held to one each.
-      const author = m.author.bot ? carlAuthor(m) : m.author.id;
+      const author = via || (m.author.bot ? carlAuthor(m) : m.author.id);
       if (!author) continue;
       raw.push({ name, ch: id, id: m.id, author, reactors: who, link: `https://discord.com/channels/${GUILD}/${id}/${m.id}` });
     }
@@ -200,7 +183,7 @@ function cardEmbed(cat) {
     description: [
       "☝️ **One each week:** suggest one or vote for one, not both",
       "👍 **Vote:** react to one name below with any emoji. React to more than one and only the oldest counts",
-      "✍️ **Suggest:** type a " + l.noun + " in this channel. It counts as your vote",
+      "✍️ **Suggest:** use `/suggest` in this channel. It counts as your vote. Chat here freely; only /suggest posts go on the wheel",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
       ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
@@ -272,7 +255,7 @@ async function say(channel, embed) {
 }
 if (flipped && posted.reset !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) if (id)
-    await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Type a " + LABELS[cat].noun + " here to suggest it, and check the pinned card to vote." });
+    await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Use /suggest here to add a " + LABELS[cat].noun + ", and check the pinned card to vote." });
   posted.reset = wk;
 }
 // Tell people once when a post won't count. Only this week's posts are kept.

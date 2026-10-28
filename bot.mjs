@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { parseDay, dayName, rankCard, form } from "./lib.mjs";
+import { parseDay, dayName, rankCard, form, CHANNELS, weekStart, SUGGEST_FROM, suggester } from "./lib.mjs";
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const KEY = Buffer.from(process.env.STATE_KEY || "", "base64");
@@ -88,6 +88,7 @@ const COMMANDS = [
   { name: "rank", description: "Show your level and XP", options: [{ type: 6, name: "member", description: "Someone else's rank" }] },
   { name: "leaderboard", description: "Top 10 by XP" },
   { name: "help", description: "What DRC Bot can do" },
+  { name: "suggest", description: "Suggest a food or game for this week's wheel", options: [{ type: 3, name: "what", description: "The food or game", required: true, max_length: 40 }] },
   { name: "xp", description: "Change someone's XP", default_member_permissions: "32", options: [
     { type: 1, name: "add", description: "Give XP", options: [member, amount] },
     { type: 1, name: "remove", description: "Take XP away", options: [member, amount] },
@@ -112,6 +113,7 @@ const callback = (i, body) => api("/interactions/" + i.id + "/" + i.token + "/ca
 async function answer(i) {
   const name = i.data.name, sub = i.data.options?.[0], opt = n => sub?.options?.find(o => o.name === n)?.value;
   const self = i.member.user.id;
+  if (name === "suggest") return suggest(i, self, opt("what") ?? i.data.options[0].value);
   if (name === "xp" || (name === "noxp" && sub.name !== "list") || (name === "birthday" && sub.name !== "next")) {
     await callback(i, { type: 5, data: { flags: 64 } });
     edits.push({ i, fn: s => change(s, name, sub.name, opt, self, i.data.resolved) });
@@ -139,7 +141,7 @@ async function answer(i) {
       "`/rank` your level card. Add a member to see theirs.",
       "`/leaderboard` top 10 by XP. You earn XP by chatting, once a minute.",
       "`/birthday set` get a shout-out and the Birthday role on your day. `/birthday next` shows who's coming up.",
-      "Pick roles by reacting in #roles. Suggest food and games in the suggestion channels; reactions are votes for the wheel.",
+      "Pick roles by reacting in #roles. `/suggest` adds a food or game in its suggestion channel. React to a suggestion to vote. One suggestion or one vote each week.",
       "",
       "**Mods** (Manage Server): `/xp` add, remove, set or reset XP. `/noxp` turn XP off for a channel or role.",
     ].join("\n") } });
@@ -160,6 +162,35 @@ async function answer(i) {
       : "No XP yet. Say something!";
   }
   await callback(i, { type: 4, data: { content, allowed_mentions: { parse: [] } } });
+}
+
+// Posts the suggestion as the bot so plain chat in the channel never counts.
+async function suggest(i, self, what) {
+  const reply = content => callback(i, { type: 4, data: { content, flags: 64 } });
+  const cat = Object.keys(CHANNELS).find(k => CHANNELS[k] === i.channel_id);
+  if (!cat) return reply("Use /suggest in " + Object.values(CHANNELS).map(c => "<#" + c + ">").join(" or ") + ".");
+  const name = what.replace(/[*_~`>]/g, "").trim();
+  if (!name) return reply("Type the " + (cat === "food" ? "food" : "game") + " after /suggest.");
+  await callback(i, { type: 5, data: { flags: 64 } });
+  const done = content => api("/webhooks/" + i.application_id + "/" + i.token + "/messages/@original", "PATCH", { content });
+  const since = weekStart(), link = m => "https://discord.com/channels/" + GUILD + "/" + i.channel_id + "/" + m.id;
+  for (let before = "", page = 0; page < 10; page++) {
+    const msgs = await api("/channels/" + i.channel_id + "/messages?limit=100" + before);
+    for (const m of msgs) {
+      if (new Date(m.timestamp) < since) page = 10;
+      else if (m.author.id === me ? suggester(m) === self : !m.author.bot && m.author.id === self && new Date(m.timestamp) < SUGGEST_FROM)
+        return done("You already suggested one this week: " + link(m) + "\nOne each week. It's also your vote.");
+      else if (m.author.id === me && suggester(m) && (m.embeds[0].description || "").toLowerCase() === name.toLowerCase())
+        return done("**" + name + "** is already on the list. React to it to vote instead: " + link(m));
+    }
+    if (msgs.length < 100) break;
+    before = "&before=" + msgs[msgs.length - 1].id;
+  }
+  const u = i.member.user, nick = i.member.nick || u.global_name || u.username;
+  const icon = u.avatar ? "https://cdn.discordapp.com/avatars/" + u.id + "/" + u.avatar + ".png" : undefined;
+  const m = await api("/channels/" + i.channel_id + "/messages", "POST", { embeds: [{ color: 0xe2552e, author: { name: nick, url: "https://discord.com/users/" + self, icon_url: icon }, description: name }], allowed_mentions: { parse: [] } });
+  kick(0);
+  return done("Added **" + name + "** to the wheel: " + link(m) + "\nThat's your one pick this week, so your reactions on other suggestions won't count.");
 }
 
 // Runs inside run() on the unsealed state. Returns the reply text.

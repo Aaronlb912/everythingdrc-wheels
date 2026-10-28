@@ -70,3 +70,29 @@ export function form(payload, name, buf) {
   fd.append("files[0]", new Blob([buf], { type: "image/png" }), name);
   return fd;
 }
+
+// Add a channel ID here to make that tab fill on its own. null = paste only.
+export const CHANNELS = {
+  food: "1562541058288779357",
+  games: "1562529876739760138",
+};
+
+// Week starts Tuesday 9 PM US Eastern.
+export const RESET_HOUR = 21;
+export const toET = d => new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
+export function weekStart(now = new Date()) {
+  const et = toET(now);
+  et.setHours(et.getHours() - RESET_HOUR, 0, 0, 0);
+  et.setHours(0, 0, 0, 0);
+  et.setDate(et.getDate() - ((et.getDay() + 5) % 7));
+  et.setHours(RESET_HOUR);
+  // Today's offset can be wrong for that Tuesday across a DST change; correct it there.
+  let t = et.getTime() + (now - toET(now));
+  t += et - toET(new Date(t));
+  return new Date(Math.round(t / 60000) * 60000);
+}
+
+// Suggestions made after this count only through /suggest.
+export const SUGGEST_FROM = new Date("2026-10-28T18:00:00Z");
+// /suggest posts are the bot's embeds with the person's profile link as author.
+export const suggester = m => m.embeds?.[0]?.author?.url?.match(/\/users\/(\d+)/)?.[1] || null;
