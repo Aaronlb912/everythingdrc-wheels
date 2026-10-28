@@ -20,7 +20,7 @@ function unseal(text) {
 }
 
 // Plain suggestion channels: the card becomes a short how-to, no wheel or votes.
-const PLAIN = { music: "1562529917546274817" };
+const PLAIN = { music: "1562529917546274817", anime: "1565113335324614656" };
 
 const GUILD = "1533847576619520082";
 
@@ -143,6 +143,7 @@ const LABELS = {
   food: { title: "Food", noun: "food", emoji: "🍕" },
   games: { title: "Game", noun: "game", emoji: "🎮" },
   music: { title: "Song", noun: "song", emoji: "🎵" },
+  anime: { title: "Anime", noun: "anime", emoji: "📺" },
   gym: { title: "Gym", noun: "gym challenge", emoji: "🏋️" },
 };
 // Extra channels are found by name so emoji prefixes don't matter.
@@ -232,7 +233,7 @@ for (const [cat, id] of Object.entries(PLAIN)) {
   await keep(cat + "_card", id, {
     color: COLOR,
     title: LABELS[cat].emoji + " " + LABELS[cat].title + " suggestions",
-    description: "Got a " + LABELS[cat].noun + " Dennis should check out? Post it here. React to the ones you like.",
+    description: (cat === "anime" ? "Got an " : "Got a ") + LABELS[cat].noun + " Dennis should check out? Post it here. React to the ones you like.",
   });
 }
 // One post per channel when the week flips, and a last call Tuesday noon (ET),
