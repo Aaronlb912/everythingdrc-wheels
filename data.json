@@ -30,6 +30,11 @@
   ],
   "games": [
    [
+    "Vampire Crawlers",
+    2,
+    "https://discord.com/channels/1533847576619520082/1562529876739760138/1562575421617471609"
+   ],
+   [
     "https://youtu.be/cXr1KBLJoWM?is=t0EZVe57",
     1,
     "https://discord.com/channels/1533847576619520082/1562529876739760138/1562572539941880068"
@@ -38,11 +43,6 @@
     "Bye Sweet Carole",
     1,
     "https://discord.com/channels/1533847576619520082/1562529876739760138/1562575213206704151"
-   ],
-   [
-    "Vampire Crawlers",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562529876739760138/1562575421617471609"
    ],
    [
     "Asura’s Wrath",
@@ -61,5 +61,5 @@
    ]
   ]
  },
- "updated": "2026-10-30T20:09:30.662Z"
+ "updated": "2026-10-30T20:11:47.974Z"
 }
