@@ -114,14 +114,11 @@ function oneEach(raw) {
 }
 
 const since = weekStart();
-// The reset moved from Monday 00:00 to Tuesday 9 PM mid-week. Keep that week's
-// Monday and Tuesday suggestions; this does nothing after Oct 27 2026.
-const listFrom = new Date(Math.min(since, Date.parse("2026-10-19T04:00:00Z")));
 const lists = {};
 for (const [cat, id] of Object.entries(CHANNELS)) {
   if (!id) continue;
   const merged = new Map();
-  for (const [name, v, link] of await channelEntries(id, listFrom)) {
+  for (const [name, v, link] of await channelEntries(id, since)) {
     const k = name.toLowerCase();
     const cur = merged.get(k);
     // Repeats add their votes to the first post, which keeps the link.
