@@ -93,6 +93,6 @@ export function weekStart(now = new Date()) {
 }
 
 // Suggestions made after this count only through /suggest.
-export const SUGGEST_FROM = new Date("2026-10-28T18:00:00Z");
+export const SUGGEST_FROM = new Date("2026-10-28T14:00:00Z");
 // /suggest posts are the bot's embeds with the person's profile link as author.
 export const suggester = m => m.embeds?.[0]?.author?.url?.match(/\/users\/(\d+)/)?.[1] || null;
