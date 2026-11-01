@@ -168,9 +168,9 @@ async function answer(i) {
 async function suggest(i, self, what) {
   const reply = content => callback(i, { type: 4, data: { content, flags: 64 } });
   const cat = Object.keys(CHANNELS).find(k => CHANNELS[k] === i.channel_id);
-  if (!cat) return reply("Use /suggest in " + Object.values(CHANNELS).map(c => "<#" + c + ">").join(" or ") + ".");
+  if (!cat) return reply("Use `/suggest` in " + Object.values(CHANNELS).map(c => "<#" + c + ">").join(" or ") + ".");
   const name = what.replace(/[*_~`>]/g, "").trim();
-  if (!name) return reply("Type the " + (cat === "food" ? "food" : "game") + " after /suggest.");
+  if (!name) return reply("Type `/suggest`, pick it from the menu, then type the " + (cat === "food" ? "food" : "game") + ".");
   await callback(i, { type: 5, data: { flags: 64 } });
   const done = content => api("/webhooks/" + i.application_id + "/" + i.token + "/messages/@original", "PATCH", { content });
   const since = weekStart(), link = m => "https://discord.com/channels/" + GUILD + "/" + i.channel_id + "/" + m.id;

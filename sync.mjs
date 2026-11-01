@@ -181,7 +181,7 @@ function cardEmbed(cat) {
     description: [
       "☝️ **One each week:** suggest one or vote for one, not both",
       "👍 **Vote:** react to one name below with any emoji. React to more than one and only the oldest counts",
-      "✍️ **Suggest:** use `/suggest` in this channel. It counts as your vote. Chat here freely; only /suggest posts go on the wheel",
+      "✍️ **Suggest:** type `/suggest` (no period), pick it from the menu, then type your " + l.noun + ". It counts as your vote. Chat here freely, only `/suggest` posts go on the wheel",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
       ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
@@ -253,7 +253,7 @@ async function say(channel, embed) {
 }
 if (flipped && posted.reset !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) if (id)
-    await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. Use /suggest here to add a " + LABELS[cat].noun + ", and check the pinned card to vote." });
+    await say(id, { title: "🔄 New week, fresh " + LABELS[cat].noun + " wheel", description: "Last week's list is cleared. To add a " + LABELS[cat].noun + ", type `/suggest` and pick it from the menu. Check the pinned card to vote." });
   posted.reset = wk;
 }
 // Tell people once when a post won't count. Only this week's posts are kept.
