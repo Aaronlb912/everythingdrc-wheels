@@ -181,7 +181,7 @@ function cardEmbed(cat) {
     description: [
       "☝️ **One each week:** suggest one or vote for one, not both",
       "👍 **Vote:** react to one name below with any emoji. React to more than one and only the oldest counts",
-      "✍️ **Suggest:** type `/suggest` (no period), pick it from the menu, then type your " + l.noun + ". It counts as your vote. Chat here freely, only `/suggest` posts go on the wheel",
+      "✍️ **Suggest:** type `/suggest`, pick it from the menu, then type your " + l.noun + ". It counts as your vote. Chat here freely, only `/suggest` posts go on the wheel",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
       ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
