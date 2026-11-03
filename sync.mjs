@@ -1,6 +1,6 @@
 // Reads this week's suggestions from Discord and writes data.json for the wheel.
 // A suggestion is one message; its votes are the people who reacted to it, with any emoji.
-import { parseDay, dayName, welcomeCard, form, CHANNELS, RESET_HOUR, toET, weekStart, SUGGEST_FROM, suggester } from "./lib.mjs";
+import { parseDay, dayName, welcomeCard, form, CHANNELS, RESET_HOUR, toET, weekStart, SUGGEST_FROM, suggester, nameKey } from "./lib.mjs";
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error("DISCORD_TOKEN secret is missing"); process.exit(1); }
 // XP, birthdays, streaks and role picks are kept in state.enc, encrypted with this
@@ -119,7 +119,7 @@ for (const [cat, id] of Object.entries(CHANNELS)) {
   if (!id) continue;
   const merged = new Map();
   for (const [name, v, link] of await channelEntries(id, since)) {
-    const k = name.toLowerCase();
+    const k = nameKey(name);
     const cur = merged.get(k);
     // Repeats add their votes to the first post, which keeps the link.
     merged.set(k, cur ? [cur[0], cur[1] + v, cur[2]] : [name, v, link]);
@@ -274,7 +274,7 @@ posted.extraWho = { wk, ids: [...toldWho] };
 if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && posted.lastCallTue !== wk) {
   for (const [cat, id] of Object.entries(CHANNELS)) {
     if (!id) continue;
-    const top = lists[cat].slice(0, 3).map(([n, v, link], i) => ["🥇", "🥈", "🥉"][i] + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
+    const top = lists[cat].map(([n, v, link], i) => (["🥇", "🥈", "🥉"][i] || (i + 1) + ".") + " [" + n.replace(/[[\]]/g, "") + "](" + link + ") · " + v + " 👍").join("\n");
     await say(id, { title: "⏰ Last call for " + LABELS[cat].noun + " votes", description: (top || "Nothing suggested yet. There's still time!") + "\n\nThe wheel spins soon. React to your favorite with any emoji." });
   }
   posted.lastCallTue = wk;

@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { parseDay, dayName, rankCard, form, CHANNELS, weekStart, SUGGEST_FROM, suggester } from "./lib.mjs";
+import { parseDay, dayName, rankCard, form, CHANNELS, weekStart, SUGGEST_FROM, suggester, nameKey } from "./lib.mjs";
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const KEY = Buffer.from(process.env.STATE_KEY || "", "base64");
@@ -180,7 +180,7 @@ async function suggest(i, self, what) {
       if (new Date(m.timestamp) < since) page = 10;
       else if (m.author.id === me ? suggester(m) === self : !m.author.bot && m.author.id === self && new Date(m.timestamp) < SUGGEST_FROM)
         return done("You already suggested one this week: " + link(m) + "\nOne each week. It's also your vote.");
-      else if (m.author.id === me && suggester(m) && (m.embeds[0].description || "").toLowerCase() === name.toLowerCase())
+      else if (m.author.id === me && suggester(m) && nameKey(m.embeds[0].description || "") === nameKey(name))
         return done("**" + name + "** is already on the list. React to it to vote instead: " + link(m));
     }
     if (msgs.length < 100) break;

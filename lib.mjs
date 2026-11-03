@@ -96,3 +96,5 @@ export function weekStart(now = new Date()) {
 export const SUGGEST_FROM = new Date("2026-10-28T14:00:00Z");
 // /suggest posts are the bot's embeds with the person's profile link as author.
 export const suggester = m => m.embeds?.[0]?.author?.url?.match(/\/users\/(\d+)/)?.[1] || null;
+// Same suggestion despite case, apostrophes or spacing: "Little Caesar’s" = "little caesars".
+export const nameKey = n => n.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "") || n.toLowerCase();
