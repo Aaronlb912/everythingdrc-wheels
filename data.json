@@ -1,40 +1,8 @@
 {
- "weekStart": "2026-10-28T01:00:00.000Z",
+ "weekStart": "2026-11-04T02:00:00.000Z",
  "lists": {
-  "food": [
-   [
-    "Little Caesar’s",
-    2,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1565917394357194905"
-   ],
-   [
-    "Pupusas",
-    2,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1566565967436194006"
-   ],
-   [
-    "sour patch wings",
-    2,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1566702674366439547"
-   ],
-   [
-    "A home cooked meal for once😭",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1564980169012416785"
-   ],
-   [
-    "a whole rotisserie chicken",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1565884664961573087"
-   ]
-  ],
-  "games": [
-   [
-    "Racing gamba stream",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562529876739760138/1564817867239596054"
-   ]
-  ]
+  "food": [],
+  "games": []
  },
- "updated": "2026-11-03T22:13:14.445Z"
+ "updated": "2026-11-04T02:01:31.953Z"
 }
