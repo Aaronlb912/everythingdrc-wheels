@@ -165,7 +165,7 @@ if (annCh) {
     if (cat && week && !week[cat]) week[cat] = { name: hit[2].slice(0, 60), link: msgLink(annCh, m.id) };
   }
 }
-const pickNow = picks[since.toISOString()], pickLast = picks[lastWkStart];
+const pickLast = picks[lastWkStart];
 const resetAt = Math.floor(since.getTime() / 1000) + 7 * 86400;
 function cardEmbed(cat) {
   const l = LABELS[cat], it = lists[cat];
@@ -184,7 +184,7 @@ function cardEmbed(cat) {
       "✍️ **Suggest:** type `/suggest`, pick it from the menu, then type your " + l.noun + ". It counts as your vote. Chat here freely, only `/suggest` posts go on the wheel",
       "🎡 **Win:** most votes gets the biggest slice. Dennis spins at the end of the week.",
       "",
-      ...(pickNow[cat] ? ["🎡 **Wheel pick:** [" + pickNow[cat].name.replace(/[[\]]/g, "") + "](" + pickNow[cat].link + ")", ""] : []),
+      ...(pickLast[cat] ? ["🎡 **Last week's wheel:** [" + pickLast[cat].name.replace(/[[\]]/g, "") + "](" + pickLast[cat].link + ")", ""] : []),
       "**This week**",
       it.length ? body.trim() : "Nothing yet. Be the first!",
       "",
@@ -294,7 +294,6 @@ if (posted.lastLists?.wk === wk && posted.winners !== wk && (spun || Date.now() 
       t[k] = { name: pick.name, n: (t[k]?.n || 0) + 1 };
     } else if (top) lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + ":** no spin posted. Most voted was " + top[0] + " · " + top[1] + " 👍");
   }
-  posted.lastFood = pickLast.food?.name || posted.lastLists.lists.food?.[0]?.[0] || null;
   const allTime = Object.entries(wins).map(([cat, t]) => LABELS[cat].emoji + " " +
     Object.values(t).sort((a, b) => b.n - a.n).slice(0, 3).map(x => x.name + " (" + x.n + ")").join(", ")).join("\n");
   const winCh = chan("wheel-winners");
@@ -324,15 +323,22 @@ if (etDay === 0 && clipCh && posted.clip !== wk) {
 // Food score: after Wednesday's stream, ask for a 1-10 rating; post the average Friday.
 const RATE = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
 const rateCh = chan("general-food-reviews");
-const foodName = pickLast.food?.name || posted.lastFood;
+const foodName = pickLast.food?.name || (posted.lastFood?.wk === wk && posted.lastFood.name);
 const food = foodName ? "**" + foodName + "**" : "this week's food";
+const rateText = "How was " + food + "? Tap one number below, 1 to 10. Tap more than one and your vote won't count. Score posts Friday.";
 if (rateCh && etDay === 3 && etNow.getHours() >= 19 && posted.rate?.wk !== wk) {
-  const m = await api("/channels/" + rateCh + "/messages", "POST", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: "How was " + food + "? Tap one number below, 1 to 10. Tap more than one and your vote won't count. Score posts Friday." }] })
+  const m = await api("/channels/" + rateCh + "/messages", "POST", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: rateText }] })
     .catch(e => console.warn("::warning::Couldn't post rating: " + e.message));
   if (m) {
     for (const e of RATE) await api("/channels/" + rateCh + "/messages/" + m.id + "/reactions/" + encodeURIComponent(e) + "/@me", "PUT").catch(() => null);
-    posted.rate = { wk, id: m.id };
+    posted.rate = { wk, id: m.id, named: !!foodName };
   }
+}
+// The spin got posted after the rating went up: put the food's name in.
+if (rateCh && posted.rate?.wk === wk && !posted.rate.done && !posted.rate.named && foodName) {
+  const ok = await api("/channels/" + rateCh + "/messages/" + posted.rate.id, "PATCH", { embeds: [{ color: COLOR, title: "⭐ Rate tonight's food", description: rateText }] })
+    .catch(e => console.warn("::warning::Couldn't name the food: " + e.message));
+  if (ok) posted.rate = { ...posted.rate, named: true };
 }
 if (rateCh && posted.rate?.wk === wk && !posted.rate.done && etDay >= 5) {
   const m = await api("/channels/" + rateCh + "/messages/" + posted.rate.id).catch(() => null);
