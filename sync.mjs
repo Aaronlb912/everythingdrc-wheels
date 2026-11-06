@@ -150,16 +150,16 @@ const msgLink = (ch, id) => "https://discord.com/channels/" + GUILD + "/" + ch +
 
 // Wheel picks: the wheel page's "Post to #announcements" message names the winner.
 // Newest post per category wins, so a re-spin just needs a new post, and deleting
-// the post clears the pick. Posts in the first 24 hours after the reset count for
-// the week before, so Wednesday's spin lands on the week that was voted on.
+// the post clears the pick. The spin happens after the reset, so a post any time in
+// the next week counts for the week that was voted on. Mods can also paste the copied text.
 const TITLES = { "Food Review Wednesday": "food", "Game of the week": "games", "Song of the week": "music", "Gym challenge": "gym" };
-const GRACE = 24 * 3600000, lastWkStart = new Date(since - 7 * 86400000).toISOString();
+const GRACE = 7 * 86400000 - 60000, lastWkStart = new Date(since - 7 * 86400000).toISOString();
 const picks = { [since.toISOString()]: {}, [lastWkStart]: {} };
 const annCh = chan("announcements");
 if (annCh) {
   const msgs = await api("/channels/" + annCh + "/messages?limit=100").catch(e => (console.warn("::warning::Can't read announcements: " + e.message), []));
   for (const m of msgs) {
-    const hit = m.webhook_id && m.content.match(/^🎡 \*\*(.+?) winner:\*\* (.+) \(\d+ 👍\)$/u);
+    const hit = m.content.match(/^🎡 \*\*(.+?) winner:\*\* (.+) \(\d+ 👍\)$/u);
     const cat = hit && TITLES[hit[1]];
     const week = picks[weekStart(new Date(new Date(m.timestamp) - GRACE)).toISOString()];
     if (cat && week && !week[cat]) week[cat] = { name: hit[2].slice(0, 60), link: msgLink(annCh, m.id) };
@@ -281,15 +281,18 @@ if (etDay === 2 && etNow.getHours() >= 12 && etNow.getHours() < RESET_HOUR && po
 }
 // Winner history: when the week flips, post last week's most voted and an all-time tally.
 const wins = JSON.parse(JSON.stringify(prev.wins || {}));
-if (posted.lastLists?.wk === wk && posted.winners !== wk && Date.now() - since >= GRACE) {
+// Winners wait for the wheel: post once every category that had suggestions has a
+// spin posted, or after 6 days with whatever was spun.
+const spun = Object.keys(CHANNELS).every(cat => pickLast[cat] || !posted.lastLists?.lists[cat]?.length);
+if (posted.lastLists?.wk === wk && posted.winners !== wk && (spun || Date.now() - since >= 6 * 86400000)) {
   const lines = [];
   for (const cat of Object.keys(CHANNELS)) {
     const top = posted.lastLists.lists[cat]?.[0], pick = pickLast[cat];
-    if (pick) lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (wheel):** [" + pick.name + "](" + pick.link + ")");
-    if (!top) continue;
-    const t = wins[cat] ||= {}, k = top[0].toLowerCase();
-    t[k] = { name: top[0], n: (t[k]?.n || 0) + 1 };
-    lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + " (most voted):** " + top[0] + " · " + top[1] + " 👍");
+    if (pick) {
+      lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + ":** [" + pick.name + "](" + pick.link + ")");
+      const t = wins[cat] ||= {}, k = nameKey(pick.name);
+      t[k] = { name: pick.name, n: (t[k]?.n || 0) + 1 };
+    } else if (top) lines.push(LABELS[cat].emoji + " **" + LABELS[cat].title + ":** no spin posted. Most voted was " + top[0] + " · " + top[1] + " 👍");
   }
   posted.lastFood = pickLast.food?.name || posted.lastLists.lists.food?.[0]?.[0] || null;
   const allTime = Object.entries(wins).map(([cat, t]) => LABELS[cat].emoji + " " +
