@@ -1,40 +1,8 @@
 {
- "weekStart": "2026-11-11T02:00:00.000Z",
+ "weekStart": "2026-11-18T02:00:00.000Z",
  "lists": {
-  "food": [
-   [
-    "Chick-fil-A",
-    2,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1570302267889029192"
-   ],
-   [
-    "chipotle",
-    2,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1571948778561212577"
-   ],
-   [
-    "weetabix",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1569930228657168545"
-   ],
-   [
-    "black KFC burger",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1570311668154507427"
-   ]
-  ],
-  "games": [
-   [
-    "final fantasy 7 og and eat chikn alfredo",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562529876739760138/1569903100180041759"
-   ],
-   [
-    "before your eyes",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562529876739760138/1571013206414065734"
-   ]
-  ]
+  "food": [],
+  "games": []
  },
- "updated": "2026-11-18T01:16:00.528Z"
+ "updated": "2026-11-18T02:01:14.788Z"
 }
