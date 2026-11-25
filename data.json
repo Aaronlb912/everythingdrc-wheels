@@ -1,29 +1,8 @@
 {
- "weekStart": "2026-11-18T02:00:00.000Z",
+ "weekStart": "2026-11-25T02:00:00.000Z",
  "lists": {
-  "food": [
-   [
-    "Carl’s Jr/Hardee's",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1572458210785370234"
-   ],
-   [
-    "2 7/11 hot dogs, and turkey dinner lays",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1572652044488020082"
-   ],
-   [
-    "Cobb salad",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1572795120745586730"
-   ],
-   [
-    "filipino food any kind",
-    1,
-    "https://discord.com/channels/1533847576619520082/1562541058288779357/1573028879483015261"
-   ]
-  ],
+  "food": [],
   "games": []
  },
- "updated": "2026-11-25T00:06:07.386Z"
+ "updated": "2026-11-25T02:02:11.213Z"
 }
